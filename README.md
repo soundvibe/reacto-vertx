@@ -9,6 +9,6 @@
 * Http Server
 * Service Registry using different backends
 * Event Handlers through WebSockets
-* Handlers for reacto and hystrix metrics
+* Handlers for reacto and Hystrix metrics
 * SSE handler
 * Command Handler through WebSockets
