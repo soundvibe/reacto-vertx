@@ -7,6 +7,7 @@ import net.soundvibe.reacto.discovery.ServiceDiscoveryLifecycle;
 import net.soundvibe.reacto.discovery.types.ServiceRecord;
 import net.soundvibe.reacto.server.*;
 import net.soundvibe.reacto.types.Any;
+import net.soundvibe.reacto.vertx.server.handlers.*;
 import rx.Observable;
 
 import java.util.Objects;
@@ -96,16 +97,16 @@ public class VertxServer implements Server<HttpServer> {
     }
 
     private void setupRoutes() {
-        httpServer.websocketHandler(new net.soundvibe.reacto.vertx.server.handlers.WebSocketCommandHandler(new CommandProcessor(commands), root()));
+        httpServer.websocketHandler(new WebSocketCommandHandler(new CommandProcessor(commands), root()));
         router.route(root() + HYSTRIX_STREAM_PATH)
-            .handler(new net.soundvibe.reacto.vertx.server.handlers.SSEHandler(net.soundvibe.reacto.vertx.server.handlers.HystrixEventStreamHandler::handle));
+            .handler(new SSEHandler(HystrixEventStreamHandler::handle));
 
         router.route(root() + REACTO_STREAM_PATH)
-                .handler(new net.soundvibe.reacto.vertx.server.handlers.SSEHandler(new net.soundvibe.reacto.vertx.server.handlers.ReactoCommandMetricsStreamHandler()));
+                .handler(new SSEHandler(new ReactoCommandMetricsStreamHandler()));
 
         router.route(root() + "service-discovery/:action")
             .produces("application/json")
-            .handler(new net.soundvibe.reacto.vertx.server.handlers.ServiceDiscoveryHandler(discoveryLifecycle, () -> getHttpEndpoint(httpServer), commands));
+            .handler(new ServiceDiscoveryHandler(discoveryLifecycle, () -> getHttpEndpoint(httpServer), commands));
         httpServer.requestHandler(router::accept);
     }
 

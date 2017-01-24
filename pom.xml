@@ -35,9 +35,9 @@
 
     <properties>
         <java.version>1.8</java.version>
+        <reacto.version>1.0.0-SNAPSHOT</reacto.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <vertx.version>3.3.3</vertx.version>
-        <rxjava.version>1.2.2</rxjava.version>
     </properties>
 
     <distributionManagement>
@@ -56,7 +56,7 @@
         <dependency>
             <groupId>net.soundvibe</groupId>
             <artifactId>reacto</artifactId>
-            <version>1.0.0-SNAPSHOT</version>
+            <version>${reacto.version}</version>
         </dependency>
 
         <dependency>
