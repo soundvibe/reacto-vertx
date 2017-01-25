@@ -46,13 +46,16 @@ public class HystrixEventStreamHandlerTest {
 
     @Before
     public void setUp() throws Exception {
+        final ServiceOptions serviceOptions = new ServiceOptions("test", "test", "0.1",false, PORT);
+        final CommandRegistry commandRegistry = CommandRegistry.of("demo", o -> Observable.just(Event.create("foo"), Event.create("bar")));
         final Router router = Router.router(vertx);
         serviceRegistry = new VertxServiceRegistry(eventHandlerRegistry,
                 ServiceDiscovery.create(vertx),
-                new JacksonMapper(Json.mapper));
-        vertxServer = new VertxServer(new ServiceOptions("test", "test"),
+                new JacksonMapper(Json.mapper),
+                VertxServiceRegistry.createServiceRecord(serviceOptions), commandRegistry);
+        vertxServer = new VertxServer(serviceOptions,
                 router, vertx.createHttpServer(new HttpServerOptions().setPort(PORT)),
-                CommandRegistry.of("demo", o -> Observable.just(Event.create("foo"), Event.create("bar"))),
+                commandRegistry,
                 serviceRegistry);
 
         vertxServer.start().toBlocking().subscribe();

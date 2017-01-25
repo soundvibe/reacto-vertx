@@ -41,17 +41,16 @@ public class VertxServiceRegistryTest {
     private final VertxServiceRegistry sut = new VertxServiceRegistry(
             eventHandlerRegistry,
             serviceDiscovery,
-            new DemoServiceRegistryMapper());
+            new DemoServiceRegistryMapper(),
+            ServiceRecord.createWebSocketEndpoint(TEST_SERVICE, 8181, ROOT, "0.1"),
+            CommandRegistry.empty());
 
     @Test
     public void shouldStartDiscovery() throws Exception {
         assertDiscoveredServices(0);
 
         TestSubscriber<Any> recordTestSubscriber = new TestSubscriber<>();
-
-        final ServiceRecord httpEndpoint = ServiceRecord.createWebSocketEndpoint(TEST_SERVICE, 8181, ROOT, "0.1");
-
-        sut.startDiscovery(httpEndpoint, CommandRegistry.empty())
+        sut.register()
                 .subscribe(recordTestSubscriber);
 
         recordTestSubscriber.awaitTerminalEvent();
@@ -65,7 +64,7 @@ public class VertxServiceRegistryTest {
     public void shouldCloseDiscovery() throws Exception {
         shouldStartDiscovery();
         TestSubscriber<Any> closeSubscriber = new TestSubscriber<>();
-        sut.closeDiscovery().subscribe(closeSubscriber);
+        sut.unregister().subscribe(closeSubscriber);
         closeSubscriber.awaitTerminalEvent();
         closeSubscriber.assertNoErrors();
         closeSubscriber.assertValueCount(1);
@@ -135,17 +134,18 @@ public class VertxServiceRegistryTest {
         TestSubscriber<Any> recordTestSubscriber = new TestSubscriber<>();
         TestSubscriber<Any> closeSubscriber = new TestSubscriber<>();
         final ServiceDiscovery serviceDiscovery = ServiceDiscovery.create(Vertx.vertx());
-        final VertxServiceRegistry serviceRegistry = new VertxServiceRegistry(eventHandlerRegistry, serviceDiscovery,
-                new JacksonMapper(Json.mapper));
-
         final ServiceRecord record = ServiceRecord.createWebSocketEndpoint("testService", 8123, "test/", "0.1");
-        serviceRegistry.startDiscovery(record, CommandRegistry.empty())
+        final VertxServiceRegistry serviceRegistry = new VertxServiceRegistry(eventHandlerRegistry, serviceDiscovery,
+                new JacksonMapper(Json.mapper), record, CommandRegistry.empty());
+
+
+        serviceRegistry.register()
                 .subscribe(recordTestSubscriber);
 
         recordTestSubscriber.awaitTerminalEvent();
         recordTestSubscriber.assertNoErrors();
 
-        serviceRegistry.closeDiscovery().subscribe(closeSubscriber);
+        serviceRegistry.unregister().subscribe(closeSubscriber);
         closeSubscriber.awaitTerminalEvent();
         closeSubscriber.assertNoErrors();
 

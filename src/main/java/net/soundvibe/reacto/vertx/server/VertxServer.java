@@ -7,6 +7,7 @@ import net.soundvibe.reacto.discovery.ServiceDiscoveryLifecycle;
 import net.soundvibe.reacto.discovery.types.ServiceRecord;
 import net.soundvibe.reacto.server.*;
 import net.soundvibe.reacto.types.Any;
+import net.soundvibe.reacto.vertx.discovery.VertxServiceRegistry;
 import net.soundvibe.reacto.vertx.server.handlers.*;
 import rx.Observable;
 
@@ -31,6 +32,7 @@ public class VertxServer implements Server<HttpServer> {
     private final HttpServer httpServer;
     private final Router router;
     private final ServiceDiscoveryLifecycle discoveryLifecycle;
+    private final ServiceRecord serviceRecord;
 
     public VertxServer(
             ServiceOptions serviceOptions,
@@ -48,6 +50,7 @@ public class VertxServer implements Server<HttpServer> {
         this.httpServer = httpServer;
         this.commands = commands;
         this.discoveryLifecycle = discoveryLifecycle;
+        this.serviceRecord = VertxServiceRegistry.createServiceRecord(serviceOptions);
     }
 
     @Override
@@ -66,17 +69,8 @@ public class VertxServer implements Server<HttpServer> {
                     subscriber.onError(event.cause());
                 }
             });
-        }).flatMap(server -> discoveryLifecycle.startDiscovery(
-                getHttpEndpoint(server), commands))
-                .map(r -> httpServer);
-    }
-
-    private ServiceRecord getHttpEndpoint(HttpServer server) {
-        return ServiceRecord.createWebSocketEndpoint(
-                serviceName(),
-                server.actualPort(),
-                root(),
-                serviceOptions.version);
+        }).flatMap(server -> discoveryLifecycle.register()
+                .map(r -> httpServer));
     }
 
     @Override
@@ -93,7 +87,7 @@ public class VertxServer implements Server<HttpServer> {
                 if (event.failed() && !subscriber.isUnsubscribed()) {
                     subscriber.onError(event.cause());
                 }
-            })).flatMap(__ -> discoveryLifecycle.closeDiscovery());
+            })).flatMap(__ -> discoveryLifecycle.unregister());
     }
 
     private void setupRoutes() {
@@ -106,7 +100,7 @@ public class VertxServer implements Server<HttpServer> {
 
         router.route(root() + "service-discovery/:action")
             .produces("application/json")
-            .handler(new ServiceDiscoveryHandler(discoveryLifecycle, () -> getHttpEndpoint(httpServer), commands));
+            .handler(new ServiceDiscoveryHandler(discoveryLifecycle, () -> serviceRecord, commands));
         httpServer.requestHandler(router::accept);
     }
 

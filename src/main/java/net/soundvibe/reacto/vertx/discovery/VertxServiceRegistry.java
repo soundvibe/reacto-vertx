@@ -11,7 +11,7 @@ import net.soundvibe.reacto.discovery.types.*;
 import net.soundvibe.reacto.errors.CannotDiscoverService;
 import net.soundvibe.reacto.internal.ObjectId;
 import net.soundvibe.reacto.mappers.ServiceRegistryMapper;
-import net.soundvibe.reacto.server.CommandRegistry;
+import net.soundvibe.reacto.server.*;
 import net.soundvibe.reacto.types.*;
 import net.soundvibe.reacto.types.json.JsonObject;
 import net.soundvibe.reacto.utils.*;
@@ -26,6 +26,8 @@ import java.util.function.BiPredicate;
 
 import static java.util.Comparator.comparing;
 import static java.util.stream.Collectors.toList;
+import static net.soundvibe.reacto.utils.WebUtils.*;
+import static net.soundvibe.reacto.utils.WebUtils.includeStartDelimiter;
 
 /**
  * @author linas on 17.1.9.
@@ -37,15 +39,25 @@ public final class VertxServiceRegistry extends AbstractServiceRegistry implemen
     private final AtomicBoolean isClosed = new AtomicBoolean(true);
     private final AtomicReference<Record> record = new AtomicReference<>();
     private final ServiceDiscovery serviceDiscovery;
+    private final ServiceRecord serviceRecord;
+    private final CommandRegistry commandRegistry;
 
-    public VertxServiceRegistry(EventHandlerRegistry eventHandlerRegistry, ServiceDiscovery serviceDiscovery, ServiceRegistryMapper mapper) {
+    public VertxServiceRegistry(EventHandlerRegistry eventHandlerRegistry,
+                                ServiceDiscovery serviceDiscovery,
+                                ServiceRegistryMapper mapper,
+                                ServiceRecord serviceRecord,
+                                CommandRegistry commandRegistry) {
         super(eventHandlerRegistry, mapper);
+        Objects.requireNonNull(serviceRecord, "serviceRecord cannot be null");
+        Objects.requireNonNull(commandRegistry, "commandRegistry cannot be null");
         Objects.requireNonNull(serviceDiscovery, "serviceDiscovery cannot be null");
+        this.serviceRecord = serviceRecord;
+        this.commandRegistry = commandRegistry;
         this.serviceDiscovery = serviceDiscovery;
     }
 
     @Override
-    public Observable<Any> startDiscovery(ServiceRecord serviceRecord, CommandRegistry commandRegistry) {
+    public Observable<Any> register() {
         log.info("Starting service discovery...");
         try {
             return isClosed() ?
@@ -57,7 +69,7 @@ public final class VertxServiceRegistry extends AbstractServiceRegistry implemen
                             .doOnNext(rec -> Runtime.getRuntime().addShutdownHook(new Thread(() -> {
                                 log.info("Executing shutdown hook...");
                                 if (isOpen()) {
-                                    closeDiscovery().subscribe(
+                                    unregister().subscribe(
                                             r -> log.debug("Service discovery closed successfully"),
                                             e -> log.debug("Error when closing service discovery: " + e)
                                     );
@@ -73,7 +85,7 @@ public final class VertxServiceRegistry extends AbstractServiceRegistry implemen
     }
 
     @Override
-    public Observable<Any> closeDiscovery() {
+    public Observable<Any> unregister() {
         log.info("Closing service discovery...");
         if (isClosed()) return Observable.error(new IllegalStateException("Service discovery is already closed"));
         return Observable.just(record.get())
@@ -170,7 +182,7 @@ public final class VertxServiceRegistry extends AbstractServiceRegistry implemen
             case HttpEndpoint.TYPE:
                 return Optional.ofNullable(record.getMetadata())
                         .filter(entries -> entries.getBoolean("isHttp2", false))
-                        .map(entries -> ServiceType.HTTP2_ENDPOINT)
+                        .map(entries -> ServiceType.WEBSOCKET)
                         .orElse(ServiceType.WEBSOCKET);
             default: return ServiceType.WEBSOCKET;
         }
@@ -194,6 +206,14 @@ public final class VertxServiceRegistry extends AbstractServiceRegistry implemen
                                 .orElse("UNKNOWN"))
                         .put(ServiceRecord.METADATA_COMMANDS, commandsToJsonArray(commandRegistry))
        ).setRegistration(serviceRecord.registrationId);
+    }
+
+    public static ServiceRecord createServiceRecord(ServiceOptions serviceOptions) {
+        return ServiceRecord.createWebSocketEndpoint(
+                excludeEndDelimiter(excludeStartDelimiter(serviceOptions.serviceName)),
+                serviceOptions.port,
+                includeEndDelimiter(includeStartDelimiter(serviceOptions.root)),
+                serviceOptions.version);
     }
 
     static JsonArray commandsToJsonArray(CommandRegistry commands) {

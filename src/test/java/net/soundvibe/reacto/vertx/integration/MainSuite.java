@@ -10,7 +10,7 @@ import io.vertx.ext.web.Router;
 import io.vertx.servicediscovery.ServiceDiscovery;
 import net.soundvibe.reacto.client.commands.CommandExecutors;
 import net.soundvibe.reacto.client.events.EventHandlerRegistry;
-import net.soundvibe.reacto.discovery.types.ServiceType;
+import net.soundvibe.reacto.discovery.types.*;
 import net.soundvibe.reacto.errors.CannotDiscoverService;
 import net.soundvibe.reacto.mappers.jackson.JacksonMapper;
 import net.soundvibe.reacto.metric.*;
@@ -68,8 +68,20 @@ public class MainSuite {
                 .register(ServiceType.WEBSOCKET, serviceRecord -> VertxDiscoverableEventHandler.create(serviceRecord, serviceDiscovery))
                 .build();
 
-        registry = new VertxServiceRegistry(eventHandlerRegistry, serviceDiscovery, new DemoServiceRegistryMapper());
-        registryTyped = new VertxServiceRegistry(eventHandlerRegistry, serviceDiscovery, new JacksonMapper(Json.mapper));
+        final CommandRegistry mainCommands = createMainCommands();
+        final CommandRegistry fallbackCommands = createFallbackCommands();
+
+        final ServiceOptions mainServiceOptions = new ServiceOptions("dist", "dist/", "0.1", false, MAIN_SERVER_PORT);
+        final ServiceOptions fallbackServiceOptions = new ServiceOptions("dist", "dist/", "0.1", false, FALLBACK_SERVER_PORT);
+
+        final ServiceRecord mainServiceRecord = VertxServiceRegistry.createServiceRecord(mainServiceOptions);
+        final ServiceRecord fallbackServiceRecord = VertxServiceRegistry.createServiceRecord(fallbackServiceOptions);
+        registry = new VertxServiceRegistry(eventHandlerRegistry, serviceDiscovery, new DemoServiceRegistryMapper(),
+                mainServiceRecord,
+                mainCommands);
+        registryTyped = new VertxServiceRegistry(eventHandlerRegistry, serviceDiscovery, new JacksonMapper(Json.mapper),
+                fallbackServiceRecord,
+                fallbackCommands);
 
         final HttpServer mainHttpServer = vertx.createHttpServer(new HttpServerOptions()
                 .setPort(MAIN_SERVER_PORT)
@@ -83,10 +95,10 @@ public class MainSuite {
 
         final Router router = Router.router(vertx);
         router.route("/health").handler(event -> event.response().end("ok"));
-        vertxServer = new VertxServer(new ServiceOptions("dist", "dist/", "0.1")
-                , router, mainHttpServer, createMainCommands(), registry);
-        fallbackVertxServer = new VertxServer(new ServiceOptions("dist","dist/", "0.1")
-                , Router.router(vertx), fallbackHttpServer,  createFallbackCommands(), registryTyped);
+        vertxServer = new VertxServer(mainServiceOptions
+                , router, mainHttpServer, mainCommands, registry);
+        fallbackVertxServer = new VertxServer(fallbackServiceOptions
+                , Router.router(vertx), fallbackHttpServer, fallbackCommands, registryTyped);
         fallbackVertxServer.start().toBlocking().subscribe();
         vertxServer.start().toBlocking().subscribe();
     }
