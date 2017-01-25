@@ -17,13 +17,9 @@ import java.util.function.Supplier;
 public class ServiceDiscoveryHandler implements Handler<RoutingContext> {
 
     private final ServiceDiscoveryLifecycle controller;
-    private final Supplier<ServiceRecord> record;
-    private final CommandRegistry commandRegistry;
 
-    public ServiceDiscoveryHandler(ServiceDiscoveryLifecycle controller, Supplier<ServiceRecord> record, CommandRegistry commandRegistry) {
+    public ServiceDiscoveryHandler(ServiceDiscoveryLifecycle controller) {
         this.controller = controller;
-        this.record = record;
-        this.commandRegistry = commandRegistry;
     }
 
     @Override
@@ -37,8 +33,7 @@ public class ServiceDiscoveryHandler implements Handler<RoutingContext> {
         switch (action) {
             case "start" : {
                 Observable.just(controller)
-                        .filter(ctrl -> record.get() != null)
-                        .flatMap(ctrl -> ctrl.startDiscovery(record.get(), commandRegistry))
+                        .flatMap(ctrl -> ctrl.register())
                         .subscribe(__ -> ctx.response().end(new JsonObject()
                                 .put("message", "Service discovery was started successfully")
                                 .encode())
@@ -51,8 +46,7 @@ public class ServiceDiscoveryHandler implements Handler<RoutingContext> {
 
             case "close": {
                 Observable.just(controller)
-                        .filter(ctrl -> record.get() != null)
-                        .flatMap(ServiceDiscoveryLifecycle::closeDiscovery)
+                        .flatMap(ServiceDiscoveryLifecycle::unregister)
                         .subscribe(__ -> ctx.response().end(new JsonObject()
                                         .put("message", "Service discovery was closed successfully")
                                         .encode())

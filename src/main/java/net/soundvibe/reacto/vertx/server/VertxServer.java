@@ -4,10 +4,8 @@ import io.vertx.core.http.HttpServer;
 import io.vertx.core.logging.*;
 import io.vertx.ext.web.Router;
 import net.soundvibe.reacto.discovery.ServiceDiscoveryLifecycle;
-import net.soundvibe.reacto.discovery.types.ServiceRecord;
 import net.soundvibe.reacto.server.*;
 import net.soundvibe.reacto.types.Any;
-import net.soundvibe.reacto.vertx.discovery.VertxServiceRegistry;
 import net.soundvibe.reacto.vertx.server.handlers.*;
 import rx.Observable;
 
@@ -32,7 +30,6 @@ public class VertxServer implements Server<HttpServer> {
     private final HttpServer httpServer;
     private final Router router;
     private final ServiceDiscoveryLifecycle discoveryLifecycle;
-    private final ServiceRecord serviceRecord;
 
     public VertxServer(
             ServiceOptions serviceOptions,
@@ -50,7 +47,6 @@ public class VertxServer implements Server<HttpServer> {
         this.httpServer = httpServer;
         this.commands = commands;
         this.discoveryLifecycle = discoveryLifecycle;
-        this.serviceRecord = VertxServiceRegistry.createServiceRecord(serviceOptions);
     }
 
     @Override
@@ -100,12 +96,8 @@ public class VertxServer implements Server<HttpServer> {
 
         router.route(root() + "service-discovery/:action")
             .produces("application/json")
-            .handler(new ServiceDiscoveryHandler(discoveryLifecycle, () -> serviceRecord, commands));
+            .handler(new ServiceDiscoveryHandler(discoveryLifecycle));
         httpServer.requestHandler(router::accept);
-    }
-
-    private String serviceName() {
-        return excludeEndDelimiter(excludeStartDelimiter(serviceOptions.serviceName));
     }
 
     private String root() {
