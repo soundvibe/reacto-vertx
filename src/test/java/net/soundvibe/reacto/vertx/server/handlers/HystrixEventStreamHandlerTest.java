@@ -1,6 +1,7 @@
 package net.soundvibe.reacto.vertx.server.handlers;
 
 import com.netflix.hystrix.*;
+import com.netflix.hystrix.metric.consumer.HystrixDashboardStream;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.*;
 import io.vertx.core.json.Json;
@@ -18,6 +19,7 @@ import org.junit.*;
 import rx.Observable;
 import rx.observers.TestSubscriber;
 
+import java.util.List;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -99,6 +101,28 @@ public class HystrixEventStreamHandlerTest {
 
         await();
         assertTrue("Should received at least one message", count.get() > 0);
+    }
+
+    @Test
+    public void shouldGetDashboardData() throws Exception {
+        TestSubscriber<HystrixDashboardStream.DashboardData> testSubscriber = new TestSubscriber<>();
+        HystrixDashboardStream.getInstance().observe()
+                .subscribe(testSubscriber);
+
+        TestSubscriber<String> subscriber = new TestSubscriber<>();
+        new FooCommand("foo").toObservable().subscribe(subscriber);
+
+        subscriber.awaitTerminalEvent();
+        subscriber.assertNoErrors();
+        subscriber.assertCompleted();
+
+        testSubscriber.awaitTerminalEventAndUnsubscribeOnTimeout(1000L, TimeUnit.MILLISECONDS);
+        final List<HystrixDashboardStream.DashboardData> onNextEvents = testSubscriber.getOnNextEvents();
+        System.out.println(onNextEvents);
+        assertFalse(onNextEvents.isEmpty());
+        final HystrixDashboardStream.DashboardData dashboardData = onNextEvents.get(0);
+        final String commandJson = HystrixEventStreamHandler.getCommandJson(dashboardData.getCommandMetrics().stream().findAny().orElseThrow(RuntimeException::new));
+        assertTrue(commandJson.startsWith("{") && commandJson.endsWith("}"));
     }
 
     private void await() {

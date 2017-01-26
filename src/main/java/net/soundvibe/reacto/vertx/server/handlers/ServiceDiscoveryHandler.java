@@ -4,12 +4,9 @@ import io.vertx.core.Handler;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.web.RoutingContext;
 import net.soundvibe.reacto.discovery.ServiceDiscoveryLifecycle;
-import net.soundvibe.reacto.discovery.types.ServiceRecord;
-import net.soundvibe.reacto.server.CommandRegistry;
 import net.soundvibe.reacto.vertx.server.VertxServer;
 import rx.Observable;
-
-import java.util.function.Supplier;
+import rx.schedulers.Schedulers;
 
 /**
  * @author OZY on 2016.08.28.
@@ -33,7 +30,8 @@ public class ServiceDiscoveryHandler implements Handler<RoutingContext> {
         switch (action) {
             case "start" : {
                 Observable.just(controller)
-                        .flatMap(ctrl -> ctrl.register())
+                        .flatMap(ServiceDiscoveryLifecycle::register)
+                        .subscribeOn(Schedulers.io())
                         .subscribe(__ -> ctx.response().end(new JsonObject()
                                 .put("message", "Service discovery was started successfully")
                                 .encode())
@@ -47,6 +45,7 @@ public class ServiceDiscoveryHandler implements Handler<RoutingContext> {
             case "close": {
                 Observable.just(controller)
                         .flatMap(ServiceDiscoveryLifecycle::unregister)
+                        .subscribeOn(Schedulers.io())
                         .subscribe(__ -> ctx.response().end(new JsonObject()
                                         .put("message", "Service discovery was closed successfully")
                                         .encode())

@@ -10,13 +10,14 @@ import net.soundvibe.reacto.errors.*;
 import net.soundvibe.reacto.internal.InternalEvent;
 import net.soundvibe.reacto.mappers.Mappers;
 import net.soundvibe.reacto.types.*;
-import net.soundvibe.reacto.utils.WebUtils;
 import net.soundvibe.reacto.vertx.discovery.VertxServiceRegistry;
 import net.soundvibe.reacto.vertx.server.handlers.WebSocketFrameHandler;
 import rx.*;
 
 import java.util.Objects;
 import java.util.function.Function;
+
+import static net.soundvibe.reacto.utils.WebUtils.*;
 
 /**
  * @author OZY on 2015.11.23.
@@ -41,7 +42,7 @@ public class VertxDiscoverableEventHandler implements EventHandler, Function<Ser
     public Observable<Event> observe(Command command) {
         return Observable.just(record)
                 .<HttpClient>map(rec -> serviceDiscovery.getReference(rec).get())
-                .map(httpClient -> httpClient.websocketStream(WebUtils.includeStartDelimiter(WebUtils.includeEndDelimiter(record.getName()))))
+                .map(httpClient -> httpClient.websocketStream(includeStartDelimiter(includeEndDelimiter(record.getName()))))
                 .concatMap(webSocketStream -> observe(webSocketStream, command)
                         .onBackpressureBuffer());
     }

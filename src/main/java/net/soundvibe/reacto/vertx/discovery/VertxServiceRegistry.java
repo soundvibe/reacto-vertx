@@ -35,8 +35,6 @@ import static net.soundvibe.reacto.utils.WebUtils.includeStartDelimiter;
 public final class VertxServiceRegistry extends AbstractServiceRegistry implements ServiceDiscoveryLifecycle {
 
     private static final Logger log = LoggerFactory.getLogger(VertxServiceRegistry.class);
-
-    private final AtomicBoolean isClosed = new AtomicBoolean(true);
     private final AtomicReference<Record> record = new AtomicReference<>();
     private final ServiceDiscovery serviceDiscovery;
     private final ServiceRecord serviceRecord;
@@ -58,37 +56,33 @@ public final class VertxServiceRegistry extends AbstractServiceRegistry implemen
 
     @Override
     public Observable<Any> register() {
-        log.info("Starting service discovery...");
-        try {
-            return isClosed() ?
-                    Observable.just(serviceRecord)
-                            .map(rec -> record.updateAndGet(__ -> createVertxRecord(rec, commandRegistry)
-                                    .setRegistration(null)))
-                            .flatMap(this::publish)
-                            .doOnNext(this::startHeartBeat)
-                            .doOnNext(rec -> Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-                                log.info("Executing shutdown hook...");
-                                if (isOpen()) {
-                                    unregister().subscribe(
-                                            r -> log.debug("Service discovery closed successfully"),
-                                            e -> log.debug("Error when closing service discovery: " + e)
-                                    );
-                                }
-                            })))
-                            .map(rec -> Any.VOID)
-                            .subscribeOn(Factories.SINGLE_THREAD)
-                            .doOnCompleted(() -> isClosed.set(false)) :
-                    Observable.error(new IllegalStateException("Service discovery is already started"));
-        } catch (Throwable e) {
-            return Observable.error(e);
-        }
+        log.info("Starting to register service into service discovery...");
+        return Observable.just(serviceRecord)
+                .map(serviceRec -> record.updateAndGet(rec -> rec == null ?
+                        createVertxRecord(serviceRec, commandRegistry).setRegistration(null) :
+                        rec))
+                .flatMap(this::publish)
+                .doOnNext(this::startHeartBeat)
+                .doOnNext(rec -> Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                    log.info("Executing shutdown hook...");
+                    if (isRegistered()) {
+                        unregister().subscribe(
+                                r -> log.debug("Service was unregistered successfully"),
+                                e -> log.debug("Error when trying to unregister service: " + e)
+                        );
+                    }
+                })))
+                .map(rec -> Any.VOID)
+                .subscribeOn(Factories.SINGLE_THREAD);
     }
 
     @Override
     public Observable<Any> unregister() {
-        log.info("Closing service discovery...");
-        if (isClosed()) return Observable.error(new IllegalStateException("Service discovery is already closed"));
-        return Observable.just(record.get())
+        log.info("Unregistering service from service discovery...");
+        return Observable.just(record)
+                        .flatMap(r -> r.get() == null ?
+                                Observable.error(new IllegalStateException("Cannot unregister service because it was not registered before")) :
+                                Observable.just(r.get()))
                         .subscribeOn(Factories.SINGLE_THREAD)
                         .observeOn(Factories.SINGLE_THREAD)
                         .flatMap(rec -> removeIf(rec, VertxRecords::areEquals))
@@ -97,7 +91,6 @@ public final class VertxServiceRegistry extends AbstractServiceRegistry implemen
                         .map(rec -> Any.VOID)
                         .doOnCompleted(() -> serviceDiscovery.release(serviceDiscovery.getReference(record.get())))
                         .doOnCompleted(serviceDiscovery::close)
-                        .doOnCompleted(() -> isClosed.set(true))
                         .doOnCompleted(() -> log.info("Service discovery closed successfully"))
                 ;
     }
@@ -137,13 +130,8 @@ public final class VertxServiceRegistry extends AbstractServiceRegistry implemen
                 .map(rec -> Any.VOID);
     }
 
-    public boolean isClosed() {
-        return isClosed.get();
-    }
-
-
-    public boolean isOpen() {
-        return !isClosed.get();
+    public boolean isRegistered() {
+        return record.get() != null;
     }
 
     public Observable<Record> cleanServices() {
@@ -228,13 +216,13 @@ public final class VertxServiceRegistry extends AbstractServiceRegistry implemen
 
     private void startHeartBeat(Record record) {
         Scheduler.scheduleAtFixedInterval(TimeUnit.MINUTES.toMillis(1L), () -> {
-            if (isOpen()) {
+            if (isRegistered()) {
                 publish(record)
                         .subscribe(rec -> log.debug("Heartbeat published record: " + rec),
                                 throwable -> log.error("Error while trying to publish the record on heartbeat: " + throwable),
                                 () -> log.debug("Heartbeat completed successfully"));
             } else {
-                log.info("Skipping heartbeat because service discovery is closed");
+                log.info("Skipping heartbeat because service is not registered");
             }
         }, "service-discovery-heartbeat");
     }
@@ -264,7 +252,7 @@ public final class VertxServiceRegistry extends AbstractServiceRegistry implemen
                                                 s.onCompleted();
                                             }
                                         })))
-                                        .subscribe(record -> log.info("Record was unpublished: " + record),
+                                        .subscribe(record -> log.info("Record was unpublished: " + record.toJson().encodePrettily()),
                                                 throwable -> {
                                                     log.error("Error while trying to unpublish the record: " + throwable);
                                                     subscriber.onNext(newRecord);
