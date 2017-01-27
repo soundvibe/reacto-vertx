@@ -1,7 +1,7 @@
 package net.soundvibe.reacto.vertx.discovery;
 
 import io.vertx.core.Vertx;
-import io.vertx.core.json.*;
+import io.vertx.core.json.Json;
 import io.vertx.servicediscovery.*;
 import io.vertx.servicediscovery.Status;
 import io.vertx.servicediscovery.types.HttpEndpoint;
@@ -9,11 +9,11 @@ import net.soundvibe.reacto.client.events.EventHandlerRegistry;
 import net.soundvibe.reacto.discovery.types.*;
 import net.soundvibe.reacto.errors.CannotDiscoverService;
 import net.soundvibe.reacto.mappers.jackson.JacksonMapper;
-import net.soundvibe.reacto.server.CommandRegistry;
+import net.soundvibe.reacto.server.ServiceOptions;
 import net.soundvibe.reacto.types.*;
 import net.soundvibe.reacto.utils.WebUtils;
 import net.soundvibe.reacto.vertx.events.VertxDiscoverableEventHandler;
-import net.soundvibe.reacto.vertx.types.*;
+import net.soundvibe.reacto.vertx.types.DemoServiceRegistryMapper;
 import org.junit.Test;
 import rx.observers.TestSubscriber;
 
@@ -21,7 +21,7 @@ import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
 
 /**
  * @author OZY on 2017.01.24.
@@ -42,8 +42,9 @@ public class VertxServiceRegistryTest {
             eventHandlerRegistry,
             serviceDiscovery,
             new DemoServiceRegistryMapper(),
-            ServiceRecord.createWebSocketEndpoint(TEST_SERVICE, 8181, ROOT, "0.1"),
-            CommandRegistry.empty());
+            ServiceRecord.createWebSocketEndpoint(
+                    new ServiceOptions(TEST_SERVICE, ROOT, "0.1", false, 8181),
+                    Collections.emptyList()));
 
     @Test
     public void shouldStartDiscovery() throws Exception {
@@ -100,7 +101,7 @@ public class VertxServiceRegistryTest {
         assertEquals("Should be no services down", 0, records.size());
     }
 
-    @Test
+/*    @Test
     public void shouldSerializeCommandsToJson() throws Exception {
         CommandRegistry commandRegistry = CommandRegistry
                 .of("foo", command -> rx.Observable.empty())
@@ -113,9 +114,9 @@ public class VertxServiceRegistryTest {
         final String expected2 = "{\"commands\":[{\"commandType\":\"foo\",\"eventType\":\"\"},{\"commandType\":\"bar\",\"eventType\":\"\"}]}";
         assertTrue("Was not " + expected1 + " or " + expected2 + " but was " + actual,
                 actual.equals(expected1) || actual.equals(expected2));
-    }
+    }*/
 
-    @Test
+/*    @Test
     public void shouldSerializeTypedCommandToJson() throws Exception {
         CommandRegistry commandRegistry = CommandRegistry
                 .ofTyped(MakeDemo.class, DemoMade.class, makeDemo -> rx.Observable.empty(), new DemoCommandRegistryMapper());
@@ -125,7 +126,7 @@ public class VertxServiceRegistryTest {
         final String actual = jsonObject.encode();
         final String expected = "{\"commands\":[{\"commandType\":\"net.soundvibe.reacto.vertx.types.MakeDemo\",\"eventType\":\"net.soundvibe.reacto.vertx.types.DemoMade\"}]}";
         assertEquals(expected, actual);
-    }
+    }*/
 
 
     @Test
@@ -134,9 +135,12 @@ public class VertxServiceRegistryTest {
         TestSubscriber<Any> recordTestSubscriber = new TestSubscriber<>();
         TestSubscriber<Any> closeSubscriber = new TestSubscriber<>();
         final ServiceDiscovery serviceDiscovery = ServiceDiscovery.create(Vertx.vertx());
-        final ServiceRecord record = ServiceRecord.createWebSocketEndpoint("testService", 8123, "test/", "0.1");
-        final VertxServiceRegistry serviceRegistry = new VertxServiceRegistry(eventHandlerRegistry, serviceDiscovery,
-                new JacksonMapper(Json.mapper), record, CommandRegistry.empty());
+        final ServiceRecord record = ServiceRecord.createWebSocketEndpoint(
+                new ServiceOptions("testService", "test/", "0.1", false, 8123),
+                Collections.emptyList());
+        final VertxServiceRegistry serviceRegistry = new VertxServiceRegistry(
+                eventHandlerRegistry, serviceDiscovery,
+                new JacksonMapper(Json.mapper), record);
 
 
         serviceRegistry.register()

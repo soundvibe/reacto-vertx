@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 import static org.junit.Assert.*;
 
@@ -74,14 +75,14 @@ public class MainSuite {
         final ServiceOptions mainServiceOptions = new ServiceOptions("dist", "dist/", "0.1", false, MAIN_SERVER_PORT);
         final ServiceOptions fallbackServiceOptions = new ServiceOptions("dist", "dist/", "0.1", false, FALLBACK_SERVER_PORT);
 
-        final ServiceRecord mainServiceRecord = VertxServiceRegistry.createServiceRecord(mainServiceOptions);
-        final ServiceRecord fallbackServiceRecord = VertxServiceRegistry.createServiceRecord(fallbackServiceOptions);
+        final ServiceRecord mainServiceRecord = ServiceRecord.createWebSocketEndpoint(mainServiceOptions,
+                mainCommands.streamOfKeys().collect(Collectors.toList()));
+        final ServiceRecord fallbackServiceRecord = ServiceRecord.createWebSocketEndpoint(fallbackServiceOptions,
+                fallbackCommands.streamOfKeys().collect(Collectors.toList()));
         registry = new VertxServiceRegistry(eventHandlerRegistry, serviceDiscovery, new DemoServiceRegistryMapper(),
-                mainServiceRecord,
-                mainCommands);
+                mainServiceRecord);
         registryTyped = new VertxServiceRegistry(eventHandlerRegistry, serviceDiscovery, new JacksonMapper(Json.mapper),
-                fallbackServiceRecord,
-                fallbackCommands);
+                fallbackServiceRecord);
 
         final HttpServer mainHttpServer = vertx.createHttpServer(new HttpServerOptions()
                 .setPort(MAIN_SERVER_PORT)

@@ -1,6 +1,6 @@
 package net.soundvibe.reacto.vertx.discovery;
 
-import io.vertx.core.json.JsonArray;
+import io.vertx.core.json.Json;
 import io.vertx.core.logging.*;
 import io.vertx.servicediscovery.*;
 import io.vertx.servicediscovery.Status;
@@ -11,7 +11,7 @@ import net.soundvibe.reacto.discovery.types.*;
 import net.soundvibe.reacto.errors.CannotDiscoverService;
 import net.soundvibe.reacto.internal.ObjectId;
 import net.soundvibe.reacto.mappers.ServiceRegistryMapper;
-import net.soundvibe.reacto.server.*;
+import net.soundvibe.reacto.mappers.jackson.JacksonMapper;
 import net.soundvibe.reacto.types.*;
 import net.soundvibe.reacto.types.json.JsonObject;
 import net.soundvibe.reacto.utils.*;
@@ -21,13 +21,11 @@ import rx.Observable;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.*;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiPredicate;
 
 import static java.util.Comparator.comparing;
 import static java.util.stream.Collectors.toList;
-import static net.soundvibe.reacto.utils.WebUtils.*;
-import static net.soundvibe.reacto.utils.WebUtils.includeStartDelimiter;
 
 /**
  * @author linas on 17.1.9.
@@ -38,20 +36,21 @@ public final class VertxServiceRegistry extends AbstractServiceRegistry implemen
     private final AtomicReference<Record> record = new AtomicReference<>();
     private final ServiceDiscovery serviceDiscovery;
     private final ServiceRecord serviceRecord;
-    private final CommandRegistry commandRegistry;
 
     public VertxServiceRegistry(EventHandlerRegistry eventHandlerRegistry,
                                 ServiceDiscovery serviceDiscovery,
                                 ServiceRegistryMapper mapper,
-                                ServiceRecord serviceRecord,
-                                CommandRegistry commandRegistry) {
+                                ServiceRecord serviceRecord) {
         super(eventHandlerRegistry, mapper);
         Objects.requireNonNull(serviceRecord, "serviceRecord cannot be null");
-        Objects.requireNonNull(commandRegistry, "commandRegistry cannot be null");
         Objects.requireNonNull(serviceDiscovery, "serviceDiscovery cannot be null");
         this.serviceRecord = serviceRecord;
-        this.commandRegistry = commandRegistry;
         this.serviceDiscovery = serviceDiscovery;
+    }
+
+    static {
+        Json.mapper.registerModule(JacksonMapper.jsonTypesModule());
+        Json.prettyMapper.registerModule(JacksonMapper.jsonTypesModule());
     }
 
     @Override
@@ -59,7 +58,7 @@ public final class VertxServiceRegistry extends AbstractServiceRegistry implemen
         log.info("Starting to register service into service discovery...");
         return Observable.just(serviceRecord)
                 .map(serviceRec -> record.updateAndGet(rec -> rec == null ?
-                        createVertxRecord(serviceRec, commandRegistry).setRegistration(null) :
+                        createVertxRecord(serviceRec).setRegistration(null) :
                         rec))
                 .flatMap(this::publish)
                 .doOnNext(this::startHeartBeat)
@@ -177,10 +176,6 @@ public final class VertxServiceRegistry extends AbstractServiceRegistry implemen
     }
 
     public static Record createVertxRecord(ServiceRecord serviceRecord) {
-        return createVertxRecord(serviceRecord, CommandRegistry.empty());
-    }
-
-    public static Record createVertxRecord(ServiceRecord serviceRecord, CommandRegistry commandRegistry) {
         final String host = serviceRecord.location.asString(ServiceRecord.LOCATION_HOST).orElseGet(WebUtils::getLocalAddress);
         final Integer port = serviceRecord.location.asInteger(ServiceRecord.LOCATION_PORT)
                 .orElseThrow(() -> new IllegalArgumentException("port is not found in serviceRecord location"));
@@ -189,29 +184,8 @@ public final class VertxServiceRegistry extends AbstractServiceRegistry implemen
                host,
                port,
                serviceRecord.location.asString(ServiceRecord.LOCATION_ROOT).orElse("/"),
-               new io.vertx.core.json.JsonObject()
-                        .put(ServiceRecord.METADATA_VERSION, serviceRecord.metaData.asString(ServiceRecord.METADATA_VERSION)
-                                .orElse("UNKNOWN"))
-                        .put(ServiceRecord.METADATA_COMMANDS, commandsToJsonArray(commandRegistry))
+               new io.vertx.core.json.JsonObject(serviceRecord.metaData.encode(Json::encode))
        ).setRegistration(serviceRecord.registrationId);
-    }
-
-    public static ServiceRecord createServiceRecord(ServiceOptions serviceOptions) {
-        return ServiceRecord.createWebSocketEndpoint(
-                excludeEndDelimiter(excludeStartDelimiter(serviceOptions.serviceName)),
-                serviceOptions.port,
-                includeEndDelimiter(includeStartDelimiter(serviceOptions.root)),
-                serviceOptions.version);
-    }
-
-    static JsonArray commandsToJsonArray(CommandRegistry commands) {
-        return commands.stream()
-                .map(Pair::getKey)
-                .map(commandDescriptor -> new io.vertx.core.json.JsonObject()
-                        .put(CommandDescriptor.COMMAND, commandDescriptor.commandType)
-                        .put(CommandDescriptor.EVENT, commandDescriptor.eventType)
-                )
-                .reduce(new JsonArray(), JsonArray::add, JsonArray::addAll);
     }
 
     private void startHeartBeat(Record record) {

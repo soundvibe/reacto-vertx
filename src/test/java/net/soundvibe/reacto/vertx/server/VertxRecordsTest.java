@@ -3,9 +3,14 @@ package net.soundvibe.reacto.vertx.server;
 import io.vertx.core.json.*;
 import io.vertx.servicediscovery.Record;
 import io.vertx.servicediscovery.types.HttpEndpoint;
+import net.soundvibe.reacto.client.commands.CommandExecutor;
+import net.soundvibe.reacto.discovery.types.ServiceRecord;
+import net.soundvibe.reacto.server.*;
 import net.soundvibe.reacto.types.CommandDescriptor;
+import net.soundvibe.reacto.vertx.discovery.VertxServiceRegistry;
 import net.soundvibe.reacto.vertx.types.*;
 import org.junit.Test;
+import rx.Observable;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -78,6 +83,19 @@ public class VertxRecordsTest {
                 new JsonObject()
         );
         assertFalse(hasCommand("dummy", record));
+    }
+
+    @Test
+    public void shouldConvertFromReactoRecordAndFindCommands() throws Exception {
+        CommandExecutor empty = command -> Observable.empty();
+        ServiceRecord serviceRecord = ServiceRecord.createWebSocketEndpoint(
+                new ServiceOptions("service", "/", "1", false, 8181),
+                CommandRegistry.of("foo", empty).and("bar", empty)
+        );
+
+        Record vertxRecord = VertxServiceRegistry.createVertxRecord(serviceRecord);
+        assertTrue(VertxRecords.hasCommand("foo", vertxRecord));
+        assertTrue(VertxRecords.hasCommand("bar", vertxRecord));
     }
 
     private JsonObject getMetadata() {

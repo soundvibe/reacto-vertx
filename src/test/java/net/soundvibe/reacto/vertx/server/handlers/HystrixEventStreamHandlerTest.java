@@ -8,7 +8,7 @@ import io.vertx.core.json.Json;
 import io.vertx.ext.web.Router;
 import io.vertx.servicediscovery.ServiceDiscovery;
 import net.soundvibe.reacto.client.events.*;
-import net.soundvibe.reacto.discovery.types.ServiceType;
+import net.soundvibe.reacto.discovery.types.*;
 import net.soundvibe.reacto.mappers.jackson.JacksonMapper;
 import net.soundvibe.reacto.server.*;
 import net.soundvibe.reacto.types.*;
@@ -54,7 +54,7 @@ public class HystrixEventStreamHandlerTest {
         serviceRegistry = new VertxServiceRegistry(eventHandlerRegistry,
                 ServiceDiscovery.create(vertx),
                 new JacksonMapper(Json.mapper),
-                VertxServiceRegistry.createServiceRecord(serviceOptions), commandRegistry);
+                ServiceRecord.createWebSocketEndpoint(serviceOptions, commandRegistry));
         vertxServer = new VertxServer(serviceOptions,
                 router, vertx.createHttpServer(new HttpServerOptions().setPort(PORT)),
                 commandRegistry,
