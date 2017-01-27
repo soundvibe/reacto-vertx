@@ -12,8 +12,8 @@ import net.soundvibe.reacto.mappers.jackson.JacksonMapper;
 import net.soundvibe.reacto.server.ServiceOptions;
 import net.soundvibe.reacto.types.*;
 import net.soundvibe.reacto.utils.WebUtils;
-import net.soundvibe.reacto.vertx.events.VertxDiscoverableEventHandler;
-import net.soundvibe.reacto.vertx.types.DemoServiceRegistryMapper;
+import net.soundvibe.reacto.vertx.events.VertxWebSocketEventHandler;
+import net.soundvibe.reacto.vertx.types.*;
 import org.junit.Test;
 import rx.observers.TestSubscriber;
 
@@ -35,7 +35,7 @@ public class VertxServiceRegistryTest {
     private final ServiceDiscovery serviceDiscovery = ServiceDiscovery.create(vertx);
 
     private final EventHandlerRegistry eventHandlerRegistry = EventHandlerRegistry.Builder.create()
-            .register(ServiceType.WEBSOCKET, serviceRecord -> VertxDiscoverableEventHandler.create(serviceRecord, serviceDiscovery))
+            .register(ServiceType.WEBSOCKET, serviceRecord -> VertxWebSocketEventHandler.create(serviceRecord, serviceDiscovery))
             .build();
 
     private final VertxServiceRegistry sut = new VertxServiceRegistry(
@@ -100,34 +100,6 @@ public class VertxServiceRegistryTest {
         List<Record> records = getRecords(Status.DOWN);
         assertEquals("Should be no services down", 0, records.size());
     }
-
-/*    @Test
-    public void shouldSerializeCommandsToJson() throws Exception {
-        CommandRegistry commandRegistry = CommandRegistry
-                .of("foo", command -> rx.Observable.empty())
-                .and("bar", command -> rx.Observable.empty());
-
-        final JsonArray array = VertxServiceRegistry.commandsToJsonArray(commandRegistry);
-        final JsonObject jsonObject = new JsonObject().put("commands", array);
-        final String actual = jsonObject.encode();
-        final String expected1 = "{\"commands\":[{\"commandType\":\"bar\",\"eventType\":\"\"},{\"commandType\":\"foo\",\"eventType\":\"\"}]}";
-        final String expected2 = "{\"commands\":[{\"commandType\":\"foo\",\"eventType\":\"\"},{\"commandType\":\"bar\",\"eventType\":\"\"}]}";
-        assertTrue("Was not " + expected1 + " or " + expected2 + " but was " + actual,
-                actual.equals(expected1) || actual.equals(expected2));
-    }*/
-
-/*    @Test
-    public void shouldSerializeTypedCommandToJson() throws Exception {
-        CommandRegistry commandRegistry = CommandRegistry
-                .ofTyped(MakeDemo.class, DemoMade.class, makeDemo -> rx.Observable.empty(), new DemoCommandRegistryMapper());
-
-        final JsonArray array = VertxServiceRegistry.commandsToJsonArray(commandRegistry);
-        final JsonObject jsonObject = new JsonObject().put("commands", array);
-        final String actual = jsonObject.encode();
-        final String expected = "{\"commands\":[{\"commandType\":\"net.soundvibe.reacto.vertx.types.MakeDemo\",\"eventType\":\"net.soundvibe.reacto.vertx.types.DemoMade\"}]}";
-        assertEquals(expected, actual);
-    }*/
-
 
     @Test
     public void shouldEmitErrorWhenFindIsUnableToGetServices() throws Exception {

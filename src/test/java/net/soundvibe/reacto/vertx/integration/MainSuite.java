@@ -17,7 +17,7 @@ import net.soundvibe.reacto.metric.*;
 import net.soundvibe.reacto.server.*;
 import net.soundvibe.reacto.types.*;
 import net.soundvibe.reacto.vertx.discovery.VertxServiceRegistry;
-import net.soundvibe.reacto.vertx.events.VertxDiscoverableEventHandler;
+import net.soundvibe.reacto.vertx.events.VertxWebSocketEventHandler;
 import net.soundvibe.reacto.vertx.server.VertxServer;
 import net.soundvibe.reacto.vertx.types.*;
 import org.junit.*;
@@ -66,7 +66,7 @@ public class MainSuite {
         serviceDiscovery = ServiceDiscovery.create(vertx);
 
         final EventHandlerRegistry eventHandlerRegistry = EventHandlerRegistry.Builder.create()
-                .register(ServiceType.WEBSOCKET, serviceRecord -> VertxDiscoverableEventHandler.create(serviceRecord, serviceDiscovery))
+                .register(ServiceType.WEBSOCKET, serviceRecord -> VertxWebSocketEventHandler.create(serviceRecord, serviceDiscovery))
                 .build();
 
         final CommandRegistry mainCommands = createMainCommands();

@@ -14,7 +14,7 @@ import static org.junit.Assert.assertEquals;
 /**
  * @author OZY on 2017.01.24.
  */
-public class VertxDiscoverableEventHandlerTest {
+public class VertxWebSocketEventHandlerTest {
 
     private final Vertx vertx = Factories.vertx();
     private final ServiceDiscovery serviceDiscovery = ServiceDiscovery.create(vertx);
@@ -24,7 +24,7 @@ public class VertxDiscoverableEventHandlerTest {
         final ServiceRecord serviceRecord = ServiceRecord.createWebSocketEndpoint(
                 new ServiceOptions("test-service", "/", "0.1", false, 8080),
                 CommandRegistry.empty());
-        VertxDiscoverableEventHandler sut = new VertxDiscoverableEventHandler(serviceRecord, serviceDiscovery);
+        VertxWebSocketEventHandler sut = new VertxWebSocketEventHandler(serviceRecord, serviceDiscovery);
 
         final TestSubscriber<Event> testSubscriber = new TestSubscriber<>();
 
@@ -41,8 +41,9 @@ public class VertxDiscoverableEventHandlerTest {
         final ServiceRecord serviceRecord = ServiceRecord.createWebSocketEndpoint(
                 new ServiceOptions("test-service", "/", "0.1", false, 8080),
                 CommandRegistry.empty());
-        VertxDiscoverableEventHandler left = new VertxDiscoverableEventHandler(serviceRecord, serviceDiscovery);
-        VertxDiscoverableEventHandler right = new VertxDiscoverableEventHandler(serviceRecord, serviceDiscovery);
+        VertxWebSocketEventHandler left = new VertxWebSocketEventHandler(serviceRecord, serviceDiscovery);
+        VertxWebSocketEventHandler right = new VertxWebSocketEventHandler(serviceRecord, serviceDiscovery);
+
         assertEquals(left, right);
 
         assertEquals(left.hashCode(), right.hashCode());

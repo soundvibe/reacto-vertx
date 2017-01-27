@@ -22,15 +22,15 @@ import static net.soundvibe.reacto.utils.WebUtils.*;
 /**
  * @author OZY on 2015.11.23.
  */
-public class VertxDiscoverableEventHandler implements EventHandler, Function<ServiceRecord, EventHandler> {
+public class VertxWebSocketEventHandler implements EventHandler, Function<ServiceRecord, EventHandler> {
 
-    private static final Logger log = LoggerFactory.getLogger(VertxDiscoverableEventHandler.class);
+    private static final Logger log = LoggerFactory.getLogger(VertxWebSocketEventHandler.class);
 
     private final ServiceRecord serviceRecord;
     private final Record record;
     private final ServiceDiscovery serviceDiscovery;
 
-    public VertxDiscoverableEventHandler(ServiceRecord serviceRecord, ServiceDiscovery serviceDiscovery) {
+    public VertxWebSocketEventHandler(ServiceRecord serviceRecord, ServiceDiscovery serviceDiscovery) {
         Objects.requireNonNull(serviceRecord, "serviceRecord cannot be null");
         Objects.requireNonNull(serviceDiscovery, "serviceDiscovery cannot be null");
         this.serviceRecord = serviceRecord;
@@ -53,7 +53,7 @@ public class VertxDiscoverableEventHandler implements EventHandler, Function<Ser
     }
 
     public static EventHandler create(ServiceRecord serviceRecord, ServiceDiscovery serviceDiscovery) {
-        return new VertxDiscoverableEventHandler(serviceRecord, serviceDiscovery);
+        return new VertxWebSocketEventHandler(serviceRecord, serviceDiscovery);
     }
 
     @Override
@@ -65,7 +65,7 @@ public class VertxDiscoverableEventHandler implements EventHandler, Function<Ser
     public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
-        VertxDiscoverableEventHandler that = (VertxDiscoverableEventHandler) o;
+        VertxWebSocketEventHandler that = (VertxWebSocketEventHandler) o;
         return Objects.equals(record, that.record);
     }
 
