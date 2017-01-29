@@ -22,15 +22,15 @@ public interface VertxRecords {
                 Objects.equals(newRecord.getType(), existingRecord.getType());
     }
 
-    static boolean isDown(Record existingRecord) {
-        return existingRecord.getStatus() == Status.DOWN || !isUpdatedRecently(existingRecord);
+    static boolean isDown(Record existingRecord, long heartbeatIntervalInMillis) {
+        return existingRecord.getStatus() == Status.DOWN || !isUpdatedRecently(existingRecord, heartbeatIntervalInMillis);
     }
 
-    static boolean isUpdatedRecently(Record record) {
+    static boolean isUpdatedRecently(Record record, long heartbeatIntervalInMillis) {
         final Instant now = Instant.now();
         return Duration.between(record.getMetadata().getInstant(LAST_UPDATED, now),
                 now)
-                .toMinutes() < 4L;
+                .toMillis() <= heartbeatIntervalInMillis + 10000L;
     }
 
     JsonArray emptyJsonArray = new JsonArray();

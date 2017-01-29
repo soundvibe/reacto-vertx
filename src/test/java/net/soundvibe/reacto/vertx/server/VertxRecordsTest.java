@@ -14,6 +14,7 @@ import rx.Observable;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.concurrent.TimeUnit;
 
 import static net.soundvibe.reacto.vertx.server.VertxRecords.*;
 import static org.junit.Assert.*;
@@ -23,18 +24,20 @@ import static org.junit.Assert.*;
  */
 public class VertxRecordsTest {
 
+    private static final long HEARTBEAT = TimeUnit.MINUTES.toMillis(1L);
+
     @Test
     public void shouldBeDown() throws Exception {
         final Record oldRecord = HttpEndpoint.createRecord("test", "localhost", 80, "/",
-                new JsonObject().put(LAST_UPDATED, Instant.now().minus(5L, ChronoUnit.MINUTES)));
-        assertTrue(isDown(oldRecord));
+                new JsonObject().put(LAST_UPDATED, Instant.now().minus(2L, ChronoUnit.MINUTES)));
+        assertTrue(isDown(oldRecord, HEARTBEAT));
     }
 
     @Test
     public void shouldBeUp() throws Exception {
         final Record oldRecord = HttpEndpoint.createRecord("test", "localhost", 80, "/",
-                new JsonObject().put(LAST_UPDATED, Instant.now().minus(2L, ChronoUnit.MINUTES)));
-        assertFalse(isDown(oldRecord));
+                new JsonObject().put(LAST_UPDATED, Instant.now().minus(1L, ChronoUnit.MINUTES)));
+        assertFalse(isDown(oldRecord, HEARTBEAT));
     }
 
     @Test

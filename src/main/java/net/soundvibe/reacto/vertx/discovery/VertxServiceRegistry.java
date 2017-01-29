@@ -33,19 +33,32 @@ import static java.util.stream.Collectors.toList;
 public final class VertxServiceRegistry extends AbstractServiceRegistry implements ServiceDiscoveryLifecycle {
 
     private static final Logger log = LoggerFactory.getLogger(VertxServiceRegistry.class);
+
+    public static final long DEFAULT_HEARTBEAT_IN_MILLIS = TimeUnit.MINUTES.toMillis(1L);
+
     private final AtomicReference<Record> record = new AtomicReference<>();
     private final ServiceDiscovery serviceDiscovery;
     private final ServiceRecord serviceRecord;
+    private final long heartbeatInMillis;
 
     public VertxServiceRegistry(EventHandlerRegistry eventHandlerRegistry,
                                 ServiceDiscovery serviceDiscovery,
                                 ServiceRegistryMapper mapper,
                                 ServiceRecord serviceRecord) {
+        this(eventHandlerRegistry, serviceDiscovery, mapper, serviceRecord, DEFAULT_HEARTBEAT_IN_MILLIS);
+    }
+
+    public VertxServiceRegistry(EventHandlerRegistry eventHandlerRegistry,
+                                ServiceDiscovery serviceDiscovery,
+                                ServiceRegistryMapper mapper,
+                                ServiceRecord serviceRecord,
+                                long heartbeatInMillis) {
         super(eventHandlerRegistry, mapper);
         Objects.requireNonNull(serviceRecord, "serviceRecord cannot be null");
         Objects.requireNonNull(serviceDiscovery, "serviceDiscovery cannot be null");
         this.serviceRecord = serviceRecord;
         this.serviceDiscovery = serviceDiscovery;
+        this.heartbeatInMillis = heartbeatInMillis;
     }
 
     static {
@@ -97,7 +110,7 @@ public final class VertxServiceRegistry extends AbstractServiceRegistry implemen
     @Override
     protected Observable<List<ServiceRecord>> findRecordsOf(Command command) {
         return Observable.create(subscriber ->
-                serviceDiscovery.getRecords(record -> VertxRecords.isUpdatedRecently(record) &&
+                serviceDiscovery.getRecords(record -> VertxRecords.isUpdatedRecently(record, heartbeatInMillis) &&
                                 VertxRecords.hasCommand(command.name, command.eventType(), record),
                         false,
                         asyncClients -> {
@@ -189,7 +202,7 @@ public final class VertxServiceRegistry extends AbstractServiceRegistry implemen
     }
 
     private void startHeartBeat(Record record) {
-        Scheduler.scheduleAtFixedInterval(TimeUnit.MINUTES.toMillis(1L), () -> {
+        Scheduler.scheduleAtFixedInterval(heartbeatInMillis, () -> {
             if (isRegistered()) {
                 publish(record)
                         .subscribe(rec -> log.debug("Heartbeat published record: " + rec),
@@ -250,7 +263,8 @@ public final class VertxServiceRegistry extends AbstractServiceRegistry implemen
 
     public Observable<Record> publish(Record record) {
         return Observable.just(record)
-                .flatMap(rec -> removeIf(rec, (existingRecord, newRecord) -> VertxRecords.isDown(existingRecord)))
+                .flatMap(rec -> removeIf(rec, (existingRecord, newRecord) -> VertxRecords.isDown(
+                        existingRecord, heartbeatInMillis)))
                 .map(rec -> {
                     rec.getMetadata().put(VertxRecords.LAST_UPDATED, Instant.now());
                     return rec.setStatus(Status.UP);
