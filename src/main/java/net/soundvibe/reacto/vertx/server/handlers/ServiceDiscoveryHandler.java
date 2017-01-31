@@ -32,13 +32,9 @@ public class ServiceDiscoveryHandler implements Handler<RoutingContext> {
                 Observable.just(controller)
                         .flatMap(ServiceDiscoveryLifecycle::register)
                         .subscribeOn(Schedulers.io())
-                        .subscribe(__ -> ctx.response().end(new JsonObject()
-                                .put("message", "Service discovery was started successfully")
-                                .encode())
-                                , throwable -> ctx.response()
-                                        .setStatusCode(VertxServer.INTERNAL_SERVER_ERROR)
-                                        .setStatusMessage(throwable.getClass().getSimpleName())
-                                        .end(throwable.toString()));
+                        .subscribe(
+                                __ -> writeMessage(ctx, "Service discovery was started successfully")
+                                , throwable -> writeError(ctx, throwable));
                 break;
             }
 
@@ -46,15 +42,22 @@ public class ServiceDiscoveryHandler implements Handler<RoutingContext> {
                 Observable.just(controller)
                         .flatMap(ServiceDiscoveryLifecycle::unregister)
                         .subscribeOn(Schedulers.io())
-                        .subscribe(__ -> ctx.response().end(new JsonObject()
-                                        .put("message", "Service discovery was closed successfully")
-                                        .encode())
-                                , throwable -> ctx.response()
-                                        .setStatusCode(VertxServer.INTERNAL_SERVER_ERROR)
-                                        .setStatusMessage(throwable.getClass().getSimpleName())
-                                        .end(throwable.toString()));
+                        .subscribe(
+                                __ -> writeMessage(ctx, "Service discovery was closed successfully")
+                                , throwable -> writeError(ctx, throwable));
                 break;
             }
         }
+    }
+
+    private void writeMessage(RoutingContext ctx, String message) {
+        ctx.response().end(new JsonObject().put("message", message).encode());
+    }
+
+    private void writeError(RoutingContext ctx, Throwable error) {
+        ctx.response()
+                .setStatusCode(VertxServer.INTERNAL_SERVER_ERROR)
+                .setStatusMessage(error.getClass().getSimpleName())
+                .end(new JsonObject().put("error", error.toString()).encode());
     }
 }
