@@ -51,39 +51,17 @@ public class VertxServer implements Server<HttpServer> {
 
     @Override
     public Observable<HttpServer> start() {
-        return Observable.<HttpServer>create(subscriber -> {
-            subscriber.onStart();
-            setupRoutes();
-            httpServer.listen(event -> {
-                if (event.succeeded()) {
-                    log.info("VertxServer has started successfully on port " + event.result().actualPort());
-                    subscriber.onNext(event.result());
-                    subscriber.onCompleted();
-                }
-                if (event.failed()) {
-                    log.error("Error when starting the server: " + event.cause(), event.cause());
-                    subscriber.onError(event.cause());
-                }
-            });
-        }).flatMap(server -> discoveryLifecycle.register()
-                .map(r -> httpServer));
+        return Observable.just(httpServer)
+                .doOnNext(server -> setupRoutes())
+                .flatMap(server -> RxWrap.<HttpServer>using(httpServer::listen))
+                .flatMap(server -> discoveryLifecycle.register()
+                        .map(__ -> server));
     }
 
     @Override
     public Observable<Any> stop() {
-        return Observable.create(subscriber ->
-            httpServer.close(event -> {
-                if (event.succeeded()) {
-                    log.info("Server has stopped on port " + httpServer.actualPort());
-                    if (!subscriber.isUnsubscribed()) {
-                        subscriber.onNext(Any.VOID);
-                        subscriber.onCompleted();
-                    }
-                }
-                if (event.failed() && !subscriber.isUnsubscribed()) {
-                    subscriber.onError(event.cause());
-                }
-            })).flatMap(__ -> discoveryLifecycle.unregister());
+        return RxWrap.<Void>using(httpServer::close)
+                .flatMap(__ -> discoveryLifecycle.unregister());
     }
 
     private void setupRoutes() {
