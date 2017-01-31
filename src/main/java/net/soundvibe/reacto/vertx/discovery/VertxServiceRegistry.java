@@ -16,6 +16,7 @@ import net.soundvibe.reacto.types.*;
 import net.soundvibe.reacto.types.json.JsonObject;
 import net.soundvibe.reacto.utils.*;
 import net.soundvibe.reacto.vertx.server.*;
+import net.soundvibe.reacto.vertx.server.handlers.RxWrap;
 import rx.Observable;
 
 import java.time.Instant;
@@ -24,8 +25,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiPredicate;
 
-import static java.util.Comparator.comparing;
 import static java.util.stream.Collectors.toList;
+import static net.soundvibe.reacto.vertx.server.VertxRecords.*;
+import static net.soundvibe.reacto.vertx.server.handlers.RxWrap.using;
 
 /**
  * @author linas on 17.1.9.
@@ -109,27 +111,15 @@ public final class VertxServiceRegistry extends AbstractServiceRegistry implemen
 
     @Override
     protected Observable<List<ServiceRecord>> findRecordsOf(Command command) {
-        return Observable.create(subscriber ->
-                serviceDiscovery.getRecords(record -> VertxRecords.isUpdatedRecently(record, heartbeatInMillis) &&
-                                VertxRecords.hasCommand(command.name, command.eventType(), record),
-                        false,
-                        asyncClients -> {
-                            if (asyncClients.succeeded() && !subscriber.isUnsubscribed()) {
-                                final List<Record> records = asyncClients.result();
-                                if (!records.isEmpty()) {
-                                    final Instant now = Instant.now();
-                                    records.sort(comparing(rec -> rec.getMetadata().getInstant(VertxRecords.LAST_UPDATED, now)));
-                                    subscriber.onNext(records.stream()
-                                            .map(VertxServiceRegistry::createServiceRecord)
-                                            .collect(toList()));
-                                }
-                                subscriber.onCompleted();
-                            }
-                            if (asyncClients.failed() && !subscriber.isUnsubscribed()) {
-                                subscriber.onError(new CannotDiscoverService("Unable to find: " + command.name + ":" + command.eventType(), asyncClients.cause()));
-                            }
-                        })
-        );
+        return RxWrap.<List<Record>>using(w -> serviceDiscovery.getRecords(
+                record -> isUpdatedRecently(record, heartbeatInMillis) &&
+                        hasCommand(command.name, command.eventType(), record),
+                false, w))
+                .onErrorResumeNext(error -> Observable.error(new CannotDiscoverService(
+                        "Unable to find: " + command.name + ":" + command.eventType(), error)))
+                .map(records -> records.stream()
+                        .map(VertxServiceRegistry::createServiceRecord)
+                        .collect(toList()));
     }
 
     @Override
@@ -216,45 +206,14 @@ public final class VertxServiceRegistry extends AbstractServiceRegistry implemen
 
 
     private Observable<Record> removeIf(Record newRecord, BiPredicate<Record, Record> filter) {
-        return Observable.create(subscriber ->
-                serviceDiscovery.getRecords(
-                        existingRecord -> filter.test(existingRecord, newRecord),
-                        true,
-                        event -> {
-                            if (event.succeeded()) {
-                                if (event.result().isEmpty() && !subscriber.isUnsubscribed()) {
-                                    subscriber.onNext(newRecord);
-                                    subscriber.onCompleted();
-                                    return;
-                                }
-
-                                Observable.from(event.result())
-                                        .doOnNext(record -> serviceDiscovery.release(serviceDiscovery.getReference(record)))
-                                        .flatMap(record -> Observable.<Record>create(s -> serviceDiscovery.unpublish(record.getRegistration(), deleteEvent -> {
-                                            if (deleteEvent.failed() && (!s.isUnsubscribed())) {
-                                                s.onError(deleteEvent.cause());
-                                            }
-                                            if (deleteEvent.succeeded() && (!s.isUnsubscribed())) {
-                                                s.onNext(record);
-                                                s.onCompleted();
-                                            }
-                                        })))
-                                        .subscribe(record -> log.info("Record was unpublished: " + record.toJson().encodePrettily()),
-                                                throwable -> {
-                                                    log.error("Error while trying to unpublish the record: " + throwable);
-                                                    subscriber.onNext(newRecord);
-                                                    subscriber.onCompleted();
-                                                },
-                                                () -> {
-                                                    subscriber.onNext(newRecord);
-                                                    subscriber.onCompleted();
-                                                });
-                            }
-                            if (event.failed()) {
-                                log.info("No matching records: " + event.cause());
-                                subscriber.onError(event.cause());
-                            }
-                        }));
+        return RxWrap.<List<Record>>using(w -> serviceDiscovery.getRecords(
+                existingRecord -> filter.test(existingRecord, newRecord),
+                true, w))
+                .flatMapIterable(records -> records)
+                .doOnNext(record -> serviceDiscovery.release(serviceDiscovery.getReference(record)))
+                .flatMap(record -> RxWrap.<Void>using(w -> serviceDiscovery.unpublish(record.getRegistration(), w))
+                    .map(__ -> record))
+                .defaultIfEmpty(newRecord);
     }
 
     public Record getRecord() {
@@ -269,74 +228,19 @@ public final class VertxServiceRegistry extends AbstractServiceRegistry implemen
                     rec.getMetadata().put(VertxRecords.LAST_UPDATED, Instant.now());
                     return rec.setStatus(Status.UP);
                 })
-                .flatMap(rec -> Observable.create(subscriber -> {
-                    if (rec.getRegistration() != null) {
-                        serviceDiscovery.update(record, recordEvent -> {
-                            if (recordEvent.succeeded()) {
-                                log.info("Service has been updated successfully: " + recordEvent.result().toJson());
-                                if (!subscriber.isUnsubscribed()) {
-                                    subscriber.onNext(recordEvent.result());
-                                    subscriber.onCompleted();
-                                }
-                            }
-                            if (recordEvent.failed()) {
-                                log.error("Error when trying to updated the service: " + recordEvent.cause(), recordEvent.cause());
-                                if (!subscriber.isUnsubscribed()) {
-                                    subscriber.onError(recordEvent.cause());
-                                }
-                            }
-                        });
-                    } else {
-                        serviceDiscovery.publish(rec, recordEvent -> {
-                            if (recordEvent.succeeded()) {
-                                log.info("Service has been published successfully: " + recordEvent.result().toJson());
-                                if (!subscriber.isUnsubscribed()) {
-                                    subscriber.onNext(recordEvent.result());
-                                    subscriber.onCompleted();
-                                }
-                            }
-                            if (recordEvent.failed()) {
-                                log.error("Error when trying to publish the service: " + recordEvent.cause(), recordEvent.cause());
-                                if (!subscriber.isUnsubscribed()) {
-                                    subscriber.onError(recordEvent.cause());
-                                }
-                            }
-                        });
-                    }
-                }));
+                .flatMap(rec -> rec.getRegistration() != null ?
+                        using(w -> serviceDiscovery.update(rec, w)) :
+                        using(w -> serviceDiscovery.publish(rec, w))
+                );
     }
 
     public Observable<Record> removeRecordsWithStatus(Status status) {
-        return Observable.create(subscriber ->
-                serviceDiscovery.getRecords(
-                        record -> status.equals(record.getStatus()),
-                        true,
-                        event -> {
-                            if (event.succeeded()) {
-                                if (event.result().isEmpty() && !subscriber.isUnsubscribed()) {
-                                    subscriber.onCompleted();
-                                    return;
-                                }
-                                Observable.from(event.result())
-                                        .flatMap(record -> Observable.<Record>create(subscriber1 ->
-                                                serviceDiscovery.unpublish(record.getRegistration(), e -> {
-                                                    if (e.failed() && (!subscriber1.isUnsubscribed())) {
-                                                        subscriber1.onError(e.cause());
-                                                        return;
-                                                    }
-                                                    if (e.succeeded() && (!subscriber1.isUnsubscribed())) {
-                                                        subscriber1.onNext(record);
-                                                        subscriber1.onCompleted();
-                                                    }
-                                                })
-                                        ))
-                                        .subscribe(subscriber);
-                            }
-                            if (event.failed()) {
-                                log.info("No matching records: " + event.cause());
-                                subscriber.onError(event.cause());
-                            }
-                        }));
+        return RxWrap.<List<Record>>using(w -> serviceDiscovery.getRecords(
+                record -> status.equals(record.getStatus()),
+                true, w))
+                .flatMapIterable(records -> records)
+                .flatMap(rec -> RxWrap.<Void>using(w -> serviceDiscovery.unpublish(rec.getRegistration(), w))
+                        .map(__ -> rec));
     }
 
 }
