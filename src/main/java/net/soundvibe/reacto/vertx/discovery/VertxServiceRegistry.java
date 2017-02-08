@@ -122,7 +122,6 @@ public final class VertxServiceRegistry extends AbstractServiceRegistry implemen
                         .collect(toList()));
     }
 
-    @Override
     public Observable<Any> unpublish(ServiceRecord serviceRecord) {
         return Observable.just(serviceRecord)
                 .map(rec -> createVertxRecord(serviceRecord))
