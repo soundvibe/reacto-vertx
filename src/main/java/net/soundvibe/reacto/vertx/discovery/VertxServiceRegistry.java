@@ -186,7 +186,7 @@ public final class VertxServiceRegistry extends AbstractServiceRegistry implemen
                host,
                port,
                serviceRecord.location.asString(ServiceRecord.LOCATION_ROOT).orElse("/"),
-               new io.vertx.core.json.JsonObject(serviceRecord.metaData.encode(Json::encode))
+               new io.vertx.core.json.JsonObject(serviceRecord.metadata.toJson())
        ).setRegistration(serviceRecord.registrationId);
     }
 
