@@ -24,7 +24,7 @@ public class VertxWebSocketEventHandlerTest {
         final ServiceRecord serviceRecord = ServiceRecord.createWebSocketEndpoint(
                 new ServiceOptions("test-service", "/", "0.1", false, 8080),
                 CommandRegistry.empty());
-        VertxWebSocketEventHandler sut = new VertxWebSocketEventHandler(serviceRecord, serviceDiscovery);
+        VertxWebSocketEventHandler sut = new VertxWebSocketEventHandler(serviceRecord);
 
         final TestSubscriber<Event> testSubscriber = new TestSubscriber<>();
 
@@ -41,8 +41,8 @@ public class VertxWebSocketEventHandlerTest {
         final ServiceRecord serviceRecord = ServiceRecord.createWebSocketEndpoint(
                 new ServiceOptions("test-service", "/", "0.1", false, 8080),
                 CommandRegistry.empty());
-        VertxWebSocketEventHandler left = new VertxWebSocketEventHandler(serviceRecord, serviceDiscovery);
-        VertxWebSocketEventHandler right = new VertxWebSocketEventHandler(serviceRecord, serviceDiscovery);
+        VertxWebSocketEventHandler left = new VertxWebSocketEventHandler(serviceRecord);
+        VertxWebSocketEventHandler right = new VertxWebSocketEventHandler(serviceRecord);
 
         assertEquals(left, right);
 

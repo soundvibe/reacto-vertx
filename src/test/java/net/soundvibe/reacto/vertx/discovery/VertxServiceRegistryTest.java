@@ -35,7 +35,7 @@ public class VertxServiceRegistryTest {
     private final ServiceDiscovery serviceDiscovery = ServiceDiscovery.create(vertx);
 
     private final EventHandlerRegistry eventHandlerRegistry = EventHandlerRegistry.Builder.create()
-            .register(ServiceType.WEBSOCKET, serviceRecord -> VertxWebSocketEventHandler.create(serviceRecord, serviceDiscovery))
+            .register(ServiceType.WEBSOCKET, VertxWebSocketEventHandler::create)
             .build();
 
     private final VertxServiceRegistry sut = new VertxServiceRegistry(
