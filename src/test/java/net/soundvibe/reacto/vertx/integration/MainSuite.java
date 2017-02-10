@@ -10,14 +10,13 @@ import io.vertx.ext.web.Router;
 import io.vertx.servicediscovery.ServiceDiscovery;
 import net.soundvibe.reacto.client.commands.CommandExecutors;
 import net.soundvibe.reacto.client.events.EventHandlerRegistry;
-import net.soundvibe.reacto.discovery.types.ServiceType;
+import net.soundvibe.reacto.discovery.types.*;
 import net.soundvibe.reacto.errors.CannotDiscoverService;
 import net.soundvibe.reacto.mappers.jackson.JacksonMapper;
-import net.soundvibe.reacto.metric.*;
 import net.soundvibe.reacto.server.*;
 import net.soundvibe.reacto.types.*;
 import net.soundvibe.reacto.vertx.discovery.VertxServiceRegistry;
-import net.soundvibe.reacto.vertx.events.VertxDiscoverableEventHandler;
+import net.soundvibe.reacto.vertx.events.VertxWebSocketEventHandler;
 import net.soundvibe.reacto.vertx.server.VertxServer;
 import net.soundvibe.reacto.vertx.types.*;
 import org.junit.*;
@@ -29,6 +28,7 @@ import java.util.List;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 import static org.junit.Assert.*;
 
@@ -65,11 +65,23 @@ public class MainSuite {
         serviceDiscovery = ServiceDiscovery.create(vertx);
 
         final EventHandlerRegistry eventHandlerRegistry = EventHandlerRegistry.Builder.create()
-                .register(ServiceType.WEBSOCKET, serviceRecord -> VertxDiscoverableEventHandler.create(serviceRecord, serviceDiscovery))
+                .register(ServiceType.WEBSOCKET, VertxWebSocketEventHandler::create)
                 .build();
 
-        registry = new VertxServiceRegistry(eventHandlerRegistry, serviceDiscovery, new DemoServiceRegistryMapper());
-        registryTyped = new VertxServiceRegistry(eventHandlerRegistry, serviceDiscovery, new JacksonMapper(Json.mapper));
+        final CommandRegistry mainCommands = createMainCommands();
+        final CommandRegistry fallbackCommands = createFallbackCommands();
+
+        final ServiceOptions mainServiceOptions = new ServiceOptions("dist", "dist/", "0.1", false, MAIN_SERVER_PORT);
+        final ServiceOptions fallbackServiceOptions = new ServiceOptions("dist", "dist/", "0.1", false, FALLBACK_SERVER_PORT);
+
+        final ServiceRecord mainServiceRecord = ServiceRecord.createWebSocketEndpoint(mainServiceOptions,
+                mainCommands.streamOfKeys().collect(Collectors.toList()));
+        final ServiceRecord fallbackServiceRecord = ServiceRecord.createWebSocketEndpoint(fallbackServiceOptions,
+                fallbackCommands.streamOfKeys().collect(Collectors.toList()));
+        registry = new VertxServiceRegistry(eventHandlerRegistry, serviceDiscovery, new DemoServiceRegistryMapper(),
+                mainServiceRecord);
+        registryTyped = new VertxServiceRegistry(eventHandlerRegistry, serviceDiscovery, new JacksonMapper(Json.mapper),
+                fallbackServiceRecord);
 
         final HttpServer mainHttpServer = vertx.createHttpServer(new HttpServerOptions()
                 .setPort(MAIN_SERVER_PORT)
@@ -83,10 +95,10 @@ public class MainSuite {
 
         final Router router = Router.router(vertx);
         router.route("/health").handler(event -> event.response().end("ok"));
-        vertxServer = new VertxServer(new ServiceOptions("dist", "dist/", "0.1")
-                , router, mainHttpServer, createMainCommands(), registry);
-        fallbackVertxServer = new VertxServer(new ServiceOptions("dist","dist/", "0.1")
-                , Router.router(vertx), fallbackHttpServer,  createFallbackCommands(), registryTyped);
+        vertxServer = new VertxServer(mainServiceOptions
+                , router, mainHttpServer, mainCommands, registry);
+        fallbackVertxServer = new VertxServer(fallbackServiceOptions
+                , Router.router(vertx), fallbackHttpServer, fallbackCommands, registryTyped);
         fallbackVertxServer.start().toBlocking().subscribe();
         vertxServer.start().toBlocking().subscribe();
     }
@@ -202,10 +214,6 @@ public class MainSuite {
 
     @Test
     public void shouldComposeDifferentCommands() throws Exception {
-        final TestSubscriber<CommandProcessorMetrics> metricsTestSubscriber = new TestSubscriber<>();
-        ReactoDashboardStream.observeCommandHandlers()
-                .subscribe(metricsTestSubscriber);
-
         registry.execute(command1Arg(TEST_COMMAND, "foo"))
                 .mergeWith(registry.execute(command1Arg(TEST_COMMAND_MANY, "bar")))
                 .observeOn(Schedulers.computation())
@@ -219,12 +227,6 @@ public class MainSuite {
         assertTrue(onNextEvents.contains(event1Arg("2. Called command with arg: bar")));
         assertTrue(onNextEvents.contains(event1Arg("3. Called command with arg: bar")));
         assertTrue(onNextEvents.contains(event1Arg("Called command with arg: foo")));
-
-        metricsTestSubscriber.awaitTerminalEventAndUnsubscribeOnTimeout(ReactoDashboardStream.DELAY_IN_MS, TimeUnit.MILLISECONDS);
-        metricsTestSubscriber.assertNoErrors();
-        metricsTestSubscriber.assertValueCount(1);
-        final CommandProcessorMetrics metrics = metricsTestSubscriber.getOnNextEvents().get(0);
-        assertEquals(2, metrics.commands().size());
     }
 
     @Test

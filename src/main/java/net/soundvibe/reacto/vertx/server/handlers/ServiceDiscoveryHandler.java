@@ -4,12 +4,9 @@ import io.vertx.core.Handler;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.web.RoutingContext;
 import net.soundvibe.reacto.discovery.ServiceDiscoveryLifecycle;
-import net.soundvibe.reacto.discovery.types.ServiceRecord;
-import net.soundvibe.reacto.server.CommandRegistry;
 import net.soundvibe.reacto.vertx.server.VertxServer;
 import rx.Observable;
-
-import java.util.function.Supplier;
+import rx.schedulers.Schedulers;
 
 /**
  * @author OZY on 2016.08.28.
@@ -17,13 +14,9 @@ import java.util.function.Supplier;
 public class ServiceDiscoveryHandler implements Handler<RoutingContext> {
 
     private final ServiceDiscoveryLifecycle controller;
-    private final Supplier<ServiceRecord> record;
-    private final CommandRegistry commandRegistry;
 
-    public ServiceDiscoveryHandler(ServiceDiscoveryLifecycle controller, Supplier<ServiceRecord> record, CommandRegistry commandRegistry) {
+    public ServiceDiscoveryHandler(ServiceDiscoveryLifecycle controller) {
         this.controller = controller;
-        this.record = record;
-        this.commandRegistry = commandRegistry;
     }
 
     @Override
@@ -37,31 +30,34 @@ public class ServiceDiscoveryHandler implements Handler<RoutingContext> {
         switch (action) {
             case "start" : {
                 Observable.just(controller)
-                        .filter(ctrl -> record.get() != null)
-                        .flatMap(ctrl -> ctrl.startDiscovery(record.get(), commandRegistry))
-                        .subscribe(__ -> ctx.response().end(new JsonObject()
-                                .put("message", "Service discovery was started successfully")
-                                .encode())
-                                , throwable -> ctx.response()
-                                        .setStatusCode(VertxServer.INTERNAL_SERVER_ERROR)
-                                        .setStatusMessage(throwable.getClass().getSimpleName())
-                                        .end(throwable.toString()));
+                        .flatMap(ServiceDiscoveryLifecycle::register)
+                        .subscribeOn(Schedulers.io())
+                        .subscribe(
+                                __ -> writeMessage(ctx, "Service discovery was started successfully")
+                                , throwable -> writeError(ctx, throwable));
                 break;
             }
 
             case "close": {
                 Observable.just(controller)
-                        .filter(ctrl -> record.get() != null)
-                        .flatMap(ServiceDiscoveryLifecycle::closeDiscovery)
-                        .subscribe(__ -> ctx.response().end(new JsonObject()
-                                        .put("message", "Service discovery was closed successfully")
-                                        .encode())
-                                , throwable -> ctx.response()
-                                        .setStatusCode(VertxServer.INTERNAL_SERVER_ERROR)
-                                        .setStatusMessage(throwable.getClass().getSimpleName())
-                                        .end(throwable.toString()));
+                        .flatMap(ServiceDiscoveryLifecycle::unregister)
+                        .subscribeOn(Schedulers.io())
+                        .subscribe(
+                                __ -> writeMessage(ctx, "Service discovery was closed successfully")
+                                , throwable -> writeError(ctx, throwable));
                 break;
             }
         }
+    }
+
+    private void writeMessage(RoutingContext ctx, String message) {
+        ctx.response().end(new JsonObject().put("message", message).encode());
+    }
+
+    private void writeError(RoutingContext ctx, Throwable error) {
+        ctx.response()
+                .setStatusCode(VertxServer.INTERNAL_SERVER_ERROR)
+                .setStatusMessage(error.getClass().getSimpleName())
+                .end(new JsonObject().put("error", error.toString()).encode());
     }
 }

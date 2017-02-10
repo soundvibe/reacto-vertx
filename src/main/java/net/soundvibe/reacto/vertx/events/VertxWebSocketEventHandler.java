@@ -3,45 +3,48 @@ package net.soundvibe.reacto.vertx.events;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.*;
 import io.vertx.core.logging.*;
-import io.vertx.servicediscovery.*;
 import net.soundvibe.reacto.client.events.EventHandler;
-import net.soundvibe.reacto.discovery.types.ServiceRecord;
+import net.soundvibe.reacto.discovery.types.*;
 import net.soundvibe.reacto.errors.*;
 import net.soundvibe.reacto.internal.InternalEvent;
 import net.soundvibe.reacto.mappers.Mappers;
 import net.soundvibe.reacto.types.*;
-import net.soundvibe.reacto.utils.WebUtils;
-import net.soundvibe.reacto.vertx.discovery.VertxServiceRegistry;
+import net.soundvibe.reacto.vertx.server.Factories;
 import net.soundvibe.reacto.vertx.server.handlers.WebSocketFrameHandler;
 import rx.*;
 
 import java.util.Objects;
 import java.util.function.Function;
 
+import static net.soundvibe.reacto.utils.WebUtils.*;
+
 /**
  * @author OZY on 2015.11.23.
  */
-public class VertxDiscoverableEventHandler implements EventHandler, Function<ServiceRecord, EventHandler> {
+public class VertxWebSocketEventHandler implements EventHandler, Function<ServiceRecord, EventHandler> {
 
-    private static final Logger log = LoggerFactory.getLogger(VertxDiscoverableEventHandler.class);
-
+    private static final Logger log = LoggerFactory.getLogger(VertxWebSocketEventHandler.class);
     private final ServiceRecord serviceRecord;
-    private final Record record;
-    private final ServiceDiscovery serviceDiscovery;
+    private final HttpClient httpClient;
 
-    public VertxDiscoverableEventHandler(ServiceRecord serviceRecord, ServiceDiscovery serviceDiscovery) {
+    public VertxWebSocketEventHandler(ServiceRecord serviceRecord) {
         Objects.requireNonNull(serviceRecord, "serviceRecord cannot be null");
-        Objects.requireNonNull(serviceDiscovery, "serviceDiscovery cannot be null");
+        if (serviceRecord.type != ServiceType.WEBSOCKET)
+            throw new IllegalStateException("Unexpected service type: expected WEBSOCKET, but got: " + serviceRecord.type);
         this.serviceRecord = serviceRecord;
-        this.record = VertxServiceRegistry.createVertxRecord(serviceRecord);
-        this.serviceDiscovery = serviceDiscovery;
+        final HttpClientOptions httpClientOptions = new HttpClientOptions()
+                .setSsl(serviceRecord.location.asBoolean(ServiceRecord.LOCATION_SSL).orElse(false))
+                .setKeepAlive(true)
+                .setTcpKeepAlive(true)
+                .setDefaultHost(serviceRecord.location.asString(ServiceRecord.LOCATION_HOST).orElse("localhost"))
+                .setDefaultPort(serviceRecord.location.asInteger(ServiceRecord.LOCATION_PORT).orElse(80));
+        this.httpClient = Factories.vertx().createHttpClient(httpClientOptions);
     }
 
     @Override
     public Observable<Event> observe(Command command) {
-        return Observable.just(record)
-                .<HttpClient>map(rec -> serviceDiscovery.getReference(rec).get())
-                .map(httpClient -> httpClient.websocketStream(WebUtils.includeStartDelimiter(WebUtils.includeEndDelimiter(record.getName()))))
+        return Observable.just(serviceRecord)
+                .map(rec -> httpClient.websocketStream(includeStartDelimiter(includeEndDelimiter(rec.name))))
                 .concatMap(webSocketStream -> observe(webSocketStream, command)
                         .onBackpressureBuffer());
     }
@@ -51,26 +54,26 @@ public class VertxDiscoverableEventHandler implements EventHandler, Function<Ser
         return serviceRecord;
     }
 
-    public static EventHandler create(ServiceRecord serviceRecord, ServiceDiscovery serviceDiscovery) {
-        return new VertxDiscoverableEventHandler(serviceRecord, serviceDiscovery);
+    public static EventHandler create(ServiceRecord serviceRecord) {
+        return new VertxWebSocketEventHandler(serviceRecord);
     }
 
     @Override
     public EventHandler apply(ServiceRecord serviceRecord) {
-        return create(serviceRecord, serviceDiscovery);
+        return create(serviceRecord);
     }
 
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
-        VertxDiscoverableEventHandler that = (VertxDiscoverableEventHandler) o;
-        return Objects.equals(record, that.record);
+        VertxWebSocketEventHandler that = (VertxWebSocketEventHandler) o;
+        return Objects.equals(serviceRecord, that.serviceRecord);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(record);
+        return Objects.hash(serviceRecord);
     }
 
     private static void checkForEvents(WebSocket webSocket, Subscriber<? super Event> subscriber) {
@@ -117,7 +120,7 @@ public class VertxDiscoverableEventHandler implements EventHandler, Function<Ser
                         .exceptionHandler(subscriber::onError)
                         .handler(webSocket -> {
                             try {
-                                webSocket.setWriteQueueMaxSize(Integer.MAX_VALUE).closeHandler(__ -> {
+                                webSocket.closeHandler(__ -> {
                                     if (!subscriber.isUnsubscribed()) {
                                         subscriber.onError(new ConnectionClosedUnexpectedly(
                                                 "WebSocket connection closed without completion for command: " + command));
@@ -143,7 +146,7 @@ public class VertxDiscoverableEventHandler implements EventHandler, Function<Ser
 
     @Override
     public String name() {
-        return record.getName();
+        return serviceRecord.name;
     }
 
 

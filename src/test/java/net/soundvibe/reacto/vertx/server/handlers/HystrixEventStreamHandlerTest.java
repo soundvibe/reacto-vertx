@@ -1,13 +1,14 @@
 package net.soundvibe.reacto.vertx.server.handlers;
 
 import com.netflix.hystrix.*;
+import com.netflix.hystrix.metric.consumer.HystrixDashboardStream;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.*;
 import io.vertx.core.json.Json;
 import io.vertx.ext.web.Router;
 import io.vertx.servicediscovery.ServiceDiscovery;
 import net.soundvibe.reacto.client.events.*;
-import net.soundvibe.reacto.discovery.types.ServiceType;
+import net.soundvibe.reacto.discovery.types.*;
 import net.soundvibe.reacto.mappers.jackson.JacksonMapper;
 import net.soundvibe.reacto.server.*;
 import net.soundvibe.reacto.types.*;
@@ -18,6 +19,7 @@ import org.junit.*;
 import rx.Observable;
 import rx.observers.TestSubscriber;
 
+import java.util.List;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -41,18 +43,21 @@ public class HystrixEventStreamHandlerTest {
     private final AtomicInteger count = new AtomicInteger(0);
     private final CountDownLatch countDownLatch = new CountDownLatch(1);
     private final EventHandlerRegistry eventHandlerRegistry = EventHandlerRegistry.Builder.create()
-            .register(ServiceType.WEBSOCKET, serviceRecord -> VertxDiscoverableEventHandler.create(serviceRecord, ServiceDiscovery.create(vertx)))
+            .register(ServiceType.WEBSOCKET, VertxWebSocketEventHandler::create)
             .build();
 
     @Before
     public void setUp() throws Exception {
+        final ServiceOptions serviceOptions = new ServiceOptions("test", "test", "0.1",false, PORT);
+        final CommandRegistry commandRegistry = CommandRegistry.of("demo", o -> Observable.just(Event.create("foo"), Event.create("bar")));
         final Router router = Router.router(vertx);
         serviceRegistry = new VertxServiceRegistry(eventHandlerRegistry,
                 ServiceDiscovery.create(vertx),
-                new JacksonMapper(Json.mapper));
-        vertxServer = new VertxServer(new ServiceOptions("test", "test"),
+                new JacksonMapper(Json.mapper),
+                ServiceRecord.createWebSocketEndpoint(serviceOptions, commandRegistry));
+        vertxServer = new VertxServer(serviceOptions,
                 router, vertx.createHttpServer(new HttpServerOptions().setPort(PORT)),
-                CommandRegistry.of("demo", o -> Observable.just(Event.create("foo"), Event.create("bar"))),
+                commandRegistry,
                 serviceRegistry);
 
         vertxServer.start().toBlocking().subscribe();
@@ -83,19 +88,25 @@ public class HystrixEventStreamHandlerTest {
     }
 
     @Test
-    public void shouldExecuteCommandAndPushEventStream() throws Exception {
-        createEventSource(URL_REACTO);
-
-        TestSubscriber<Event> testSubscriber = new TestSubscriber<>();
-        serviceRegistry.execute(Command.create("demo"))
+    public void shouldGetDashboardData() throws Exception {
+        TestSubscriber<HystrixDashboardStream.DashboardData> testSubscriber = new TestSubscriber<>();
+        HystrixDashboardStream.getInstance().observe()
                 .subscribe(testSubscriber);
 
-        testSubscriber.awaitTerminalEvent();
-        testSubscriber.assertNoErrors();
-        testSubscriber.assertValueCount(2);
+        TestSubscriber<String> subscriber = new TestSubscriber<>();
+        new FooCommand("foo").toObservable().subscribe(subscriber);
 
-        await();
-        assertTrue("Should received at least one message", count.get() > 0);
+        subscriber.awaitTerminalEvent();
+        subscriber.assertNoErrors();
+        subscriber.assertCompleted();
+
+        testSubscriber.awaitTerminalEventAndUnsubscribeOnTimeout(1000L, TimeUnit.MILLISECONDS);
+        final List<HystrixDashboardStream.DashboardData> onNextEvents = testSubscriber.getOnNextEvents();
+        System.out.println(onNextEvents);
+        assertFalse(onNextEvents.isEmpty());
+        final HystrixDashboardStream.DashboardData dashboardData = onNextEvents.get(0);
+        final String commandJson = HystrixEventStreamHandler.getCommandJson(dashboardData.getCommandMetrics().stream().findAny().orElseThrow(RuntimeException::new));
+        assertTrue(commandJson.startsWith("{") && commandJson.endsWith("}"));
     }
 
     private void await() {
