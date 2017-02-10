@@ -43,7 +43,7 @@ public class HystrixEventStreamHandlerTest {
     private final AtomicInteger count = new AtomicInteger(0);
     private final CountDownLatch countDownLatch = new CountDownLatch(1);
     private final EventHandlerRegistry eventHandlerRegistry = EventHandlerRegistry.Builder.create()
-            .register(ServiceType.WEBSOCKET, serviceRecord -> VertxWebSocketEventHandler.create(serviceRecord, ServiceDiscovery.create(vertx)))
+            .register(ServiceType.WEBSOCKET, VertxWebSocketEventHandler::create)
             .build();
 
     @Before
@@ -82,22 +82,6 @@ public class HystrixEventStreamHandlerTest {
         testSubscriber.assertCompleted();
         testSubscriber.assertNoErrors();
         testSubscriber.assertValue("foo");
-
-        await();
-        assertTrue("Should received at least one message", count.get() > 0);
-    }
-
-    @Test
-    public void shouldExecuteCommandAndPushEventStream() throws Exception {
-        createEventSource(URL_REACTO);
-
-        TestSubscriber<Event> testSubscriber = new TestSubscriber<>();
-        serviceRegistry.execute(Command.create("demo"))
-                .subscribe(testSubscriber);
-
-        testSubscriber.awaitTerminalEvent();
-        testSubscriber.assertNoErrors();
-        testSubscriber.assertValueCount(2);
 
         await();
         assertTrue("Should received at least one message", count.get() > 0);

@@ -13,7 +13,6 @@ import net.soundvibe.reacto.client.events.EventHandlerRegistry;
 import net.soundvibe.reacto.discovery.types.*;
 import net.soundvibe.reacto.errors.CannotDiscoverService;
 import net.soundvibe.reacto.mappers.jackson.JacksonMapper;
-import net.soundvibe.reacto.metric.*;
 import net.soundvibe.reacto.server.*;
 import net.soundvibe.reacto.types.*;
 import net.soundvibe.reacto.vertx.discovery.VertxServiceRegistry;
@@ -66,7 +65,7 @@ public class MainSuite {
         serviceDiscovery = ServiceDiscovery.create(vertx);
 
         final EventHandlerRegistry eventHandlerRegistry = EventHandlerRegistry.Builder.create()
-                .register(ServiceType.WEBSOCKET, serviceRecord -> VertxWebSocketEventHandler.create(serviceRecord, serviceDiscovery))
+                .register(ServiceType.WEBSOCKET, VertxWebSocketEventHandler::create)
                 .build();
 
         final CommandRegistry mainCommands = createMainCommands();
@@ -215,10 +214,6 @@ public class MainSuite {
 
     @Test
     public void shouldComposeDifferentCommands() throws Exception {
-        final TestSubscriber<CommandProcessorMetrics> metricsTestSubscriber = new TestSubscriber<>();
-        ReactoDashboardStream.observeCommandHandlers()
-                .subscribe(metricsTestSubscriber);
-
         registry.execute(command1Arg(TEST_COMMAND, "foo"))
                 .mergeWith(registry.execute(command1Arg(TEST_COMMAND_MANY, "bar")))
                 .observeOn(Schedulers.computation())
@@ -232,12 +227,6 @@ public class MainSuite {
         assertTrue(onNextEvents.contains(event1Arg("2. Called command with arg: bar")));
         assertTrue(onNextEvents.contains(event1Arg("3. Called command with arg: bar")));
         assertTrue(onNextEvents.contains(event1Arg("Called command with arg: foo")));
-
-        metricsTestSubscriber.awaitTerminalEventAndUnsubscribeOnTimeout(ReactoDashboardStream.DELAY_IN_MS, TimeUnit.MILLISECONDS);
-        metricsTestSubscriber.assertNoErrors();
-        metricsTestSubscriber.assertValueCount(1);
-        final CommandProcessorMetrics metrics = metricsTestSubscriber.getOnNextEvents().get(0);
-        assertEquals(2, metrics.commands().size());
     }
 
     @Test

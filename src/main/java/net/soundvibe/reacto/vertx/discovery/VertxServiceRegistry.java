@@ -32,7 +32,7 @@ import static net.soundvibe.reacto.vertx.server.handlers.RxWrap.using;
 /**
  * @author linas on 17.1.9.
  */
-public final class VertxServiceRegistry extends AbstractServiceRegistry implements ServiceDiscoveryLifecycle {
+public final class VertxServiceRegistry extends AbstractServiceRegistry {
 
     private static final Logger log = LoggerFactory.getLogger(VertxServiceRegistry.class);
 
