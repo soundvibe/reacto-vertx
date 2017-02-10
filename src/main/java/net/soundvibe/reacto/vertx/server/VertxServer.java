@@ -68,10 +68,6 @@ public class VertxServer implements Server<HttpServer> {
         httpServer.websocketHandler(new WebSocketCommandHandler(new CommandProcessor(commands), root()));
         router.route(root() + HYSTRIX_STREAM_PATH)
             .handler(new SSEHandler(HystrixEventStreamHandler::handle));
-
-        router.route(root() + REACTO_STREAM_PATH)
-                .handler(new SSEHandler(new ReactoCommandMetricsStreamHandler()));
-
         router.route(root() + "service-discovery/:action")
             .produces("application/json")
             .handler(new ServiceDiscoveryHandler(discoveryLifecycle));

@@ -88,22 +88,6 @@ public class HystrixEventStreamHandlerTest {
     }
 
     @Test
-    public void shouldExecuteCommandAndPushEventStream() throws Exception {
-        createEventSource(URL_REACTO);
-
-        TestSubscriber<Event> testSubscriber = new TestSubscriber<>();
-        serviceRegistry.execute(Command.create("demo"))
-                .subscribe(testSubscriber);
-
-        testSubscriber.awaitTerminalEvent();
-        testSubscriber.assertNoErrors();
-        testSubscriber.assertValueCount(2);
-
-        await();
-        assertTrue("Should received at least one message", count.get() > 0);
-    }
-
-    @Test
     public void shouldGetDashboardData() throws Exception {
         TestSubscriber<HystrixDashboardStream.DashboardData> testSubscriber = new TestSubscriber<>();
         HystrixDashboardStream.getInstance().observe()
