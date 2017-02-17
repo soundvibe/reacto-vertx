@@ -36,6 +36,7 @@ public class WebSocketCommandHandler implements Handler<ServerWebSocket> {
     @Override
     public void handle(ServerWebSocket serverWebSocket) {
         if (!shouldHandle(serverWebSocket.path())) {
+            log.warn("Rejecting WebSocket connection attempt to " + serverWebSocket.path());
             serverWebSocket.reject();
             return;
         }

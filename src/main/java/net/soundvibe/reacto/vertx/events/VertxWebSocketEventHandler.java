@@ -139,7 +139,8 @@ public class VertxWebSocketEventHandler implements EventHandler, Function<Servic
         final CountDownLatch countDownLatch = new CountDownLatch(1);
         final AtomicReference<WebSocket> webSocketResult = new AtomicReference<>();
         log.info("Connecting to WebSocket...");
-        httpClient.websocketStream(includeStartDelimiter(includeEndDelimiter(serviceRecord.name)))
+        httpClient.websocketStream(includeStartDelimiter(includeEndDelimiter(serviceRecord.location
+                .asString(ServiceRecord.LOCATION_ROOT).orElse(serviceRecord.name))))
                 .exceptionHandler(error -> {
                     countDownLatch.countDown();
                     doOnException(error);
