@@ -11,6 +11,7 @@ import net.soundvibe.reacto.types.*;
 import rx.*;
 
 import java.util.Objects;
+import java.util.function.Supplier;
 
 import static net.soundvibe.reacto.mappers.Mappers.internalEventToBytes;
 import static net.soundvibe.reacto.utils.WebUtils.*;
@@ -50,9 +51,9 @@ public class WebSocketCommandHandler implements Handler<ServerWebSocket> {
                                 .dematerialize()
                         )
                         .subscribe(
-                                event -> log.info("Event was processed: " + event),
+                                event -> logDebug(() -> "Event was processed: " + event),
                                 error -> log.error("Error when mapping from notification: " + error),
-                                () -> log.info("Command successfully processed")
+                                () -> logDebug(() -> "Command successfully processed")
                         );
                 serverWebSocket
                         .exceptionHandler(exception -> {
@@ -62,6 +63,12 @@ public class WebSocketCommandHandler implements Handler<ServerWebSocket> {
                         .closeHandler(__ -> subscription.unsubscribe())
                 ;
             }));
+    }
+
+    private void logDebug(Supplier<String> text) {
+        if (log.isDebugEnabled()) {
+            log.debug(text.get());
+        }
     }
 
     private static void writeEventNotification(Notification<Event> eventNotification, Command command, ServerWebSocket serverWebSocket) {

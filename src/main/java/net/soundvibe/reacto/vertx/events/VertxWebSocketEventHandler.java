@@ -55,7 +55,7 @@ public class VertxWebSocketEventHandler implements EventHandler, Function<Servic
                 .setDefaultHost(serviceRecord.location.asString(ServiceRecord.LOCATION_HOST).orElse("localhost"))
                 .setDefaultPort(serviceRecord.location.asInteger(ServiceRecord.LOCATION_PORT).orElse(80));
         this.httpClient = Factories.vertx().createHttpClient(httpClientOptions);
-        this.webSocketStream = CompletableFuture.supplyAsync(this::connect, Executors.newCachedThreadPool());
+        createStream();
     }
 
     @Override
@@ -68,7 +68,7 @@ public class VertxWebSocketEventHandler implements EventHandler, Function<Servic
                 .doOnUnsubscribe(() -> streams.remove(cmdId));
 
         if (isClosed()) {
-            refreshStream();
+            createStream();
         }
 
         return Observable.from(webSocketStream, Schedulers.computation())
@@ -76,12 +76,56 @@ public class VertxWebSocketEventHandler implements EventHandler, Function<Servic
                 .flatMap(webSocket -> eventObservable);
     }
 
+    @Override
+    public ServiceRecord serviceRecord() {
+        return serviceRecord;
+    }
+
+    public static EventHandler create(ServiceRecord serviceRecord) {
+        return new VertxWebSocketEventHandler(serviceRecord);
+    }
+
+    @Override
+    public EventHandler apply(ServiceRecord serviceRecord) {
+        return create(serviceRecord);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        VertxWebSocketEventHandler that = (VertxWebSocketEventHandler) o;
+        return Objects.equals(serviceRecord, that.serviceRecord);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(serviceRecord);
+    }
+
+    @Override
+    public String name() {
+        return serviceRecord.name;
+    }
+
+
+    @Override
+    public void close() throws IOException {
+        if (!webSocketStream.isCompletedExceptionally() && !webSocketStream.isCancelled()) {
+            try {
+                webSocketStream.get().close();
+            } catch (InterruptedException | ExecutionException e) {
+                log.error("Error when closing WebSocket: " + e);
+            }
+        }
+    }
+
     private boolean isClosed() {
         return closed.get();
     }
 
-    private synchronized void refreshStream() {
-        this.webSocketStream = CompletableFuture.supplyAsync(this::connect, Executors.newSingleThreadExecutor());
+    private synchronized void createStream() {
+        this.webSocketStream = CompletableFuture.supplyAsync(this::connect, Executors.newCachedThreadPool());
     }
 
     private static void sendCommandForExecution(Command command, WebSocket webSocket) {
@@ -137,9 +181,7 @@ public class VertxWebSocketEventHandler implements EventHandler, Function<Servic
 
     private void handleEvent(byte[] eventBytes) {
         final InternalEvent internalEvent = Mappers.fromBytesToInternalEvent(eventBytes);
-        final String cmdId = internalEvent.metaData
-                .flatMap(metaData -> metaData.valueOf("cmdId"))
-                .orElse("");
+        final String cmdId = internalEvent.commandId().orElse("");
         if (log.isDebugEnabled()) {
             log.debug("InternalEvent [" + cmdId + "] is being handled: " + internalEvent.name + ": " + internalEvent.eventType);
         }
@@ -153,7 +195,7 @@ public class VertxWebSocketEventHandler implements EventHandler, Function<Servic
             case ERROR: {
                 streams.remove(cmdId);
                 subject.onError(internalEvent.error
-                            .orElse(ReactiveException.from(new UnknownError("Unknown error from internalEvent: " + internalEvent))));
+                        .orElse(ReactiveException.from(new UnknownError("Unknown error from internalEvent: " + internalEvent))));
 
                 break;
             }
@@ -165,52 +207,9 @@ public class VertxWebSocketEventHandler implements EventHandler, Function<Servic
         }
     }
 
-    @Override
-    public ServiceRecord serviceRecord() {
-        return serviceRecord;
-    }
-
-    public static EventHandler create(ServiceRecord serviceRecord) {
-        return new VertxWebSocketEventHandler(serviceRecord);
-    }
-
     private void failWithError(Throwable error) {
         streams.forEach((objectId, subject) -> subject.onError(error));
         streams.clear();
     }
 
-    @Override
-    public EventHandler apply(ServiceRecord serviceRecord) {
-        return create(serviceRecord);
-    }
-
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-        VertxWebSocketEventHandler that = (VertxWebSocketEventHandler) o;
-        return Objects.equals(serviceRecord, that.serviceRecord);
-    }
-
-    @Override
-    public int hashCode() {
-        return Objects.hash(serviceRecord);
-    }
-
-    @Override
-    public String name() {
-        return serviceRecord.name;
-    }
-
-
-    @Override
-    public void close() throws IOException {
-        if (!webSocketStream.isCompletedExceptionally() && !webSocketStream.isCancelled()) {
-            try {
-                webSocketStream.get().close();
-            } catch (InterruptedException | ExecutionException e) {
-                log.error("Error when closing websocket: " + e);
-            }
-        }
-    }
 }
