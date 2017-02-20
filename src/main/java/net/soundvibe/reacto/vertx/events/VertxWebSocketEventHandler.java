@@ -3,7 +3,7 @@ package net.soundvibe.reacto.vertx.events;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.*;
 import io.vertx.core.logging.*;
-import net.soundvibe.reacto.client.events.EventHandler;
+import net.soundvibe.reacto.client.events.*;
 import net.soundvibe.reacto.discovery.types.*;
 import net.soundvibe.reacto.errors.*;
 import net.soundvibe.reacto.internal.InternalEvent;
@@ -20,7 +20,6 @@ import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
-import java.util.function.Function;
 
 import static net.soundvibe.reacto.mappers.Mappers.commandToBytes;
 import static net.soundvibe.reacto.utils.WebUtils.*;
@@ -28,7 +27,7 @@ import static net.soundvibe.reacto.utils.WebUtils.*;
 /**
  * @author OZY on 2015.11.23.
  */
-public class VertxWebSocketEventHandler implements EventHandler, Function<ServiceRecord, EventHandler>, Closeable {
+public class VertxWebSocketEventHandler implements EventHandler, Closeable {
 
     private static final Logger log = LoggerFactory.getLogger(VertxWebSocketEventHandler.class);
     public static final int INITIAL_CAPACITY = 10000;
@@ -79,15 +78,6 @@ public class VertxWebSocketEventHandler implements EventHandler, Function<Servic
     @Override
     public ServiceRecord serviceRecord() {
         return serviceRecord;
-    }
-
-    public static EventHandler create(ServiceRecord serviceRecord) {
-        return new VertxWebSocketEventHandler(serviceRecord);
-    }
-
-    @Override
-    public EventHandler apply(ServiceRecord serviceRecord) {
-        return create(serviceRecord);
     }
 
     @Override

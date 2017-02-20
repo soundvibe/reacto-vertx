@@ -68,7 +68,7 @@ public class MainSuite {
         serviceDiscovery = ServiceDiscovery.create(vertx);
 
         final EventHandlerRegistry eventHandlerRegistry = EventHandlerRegistry.Builder.create()
-                .register(ServiceType.WEBSOCKET, VertxWebSocketEventHandler::create)
+                .register(ServiceType.WEBSOCKET, VertxWebSocketEventHandler::new)
                 .build();
 
         final CommandRegistry mainCommands = createMainCommands();
