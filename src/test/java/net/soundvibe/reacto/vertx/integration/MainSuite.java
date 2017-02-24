@@ -1,5 +1,6 @@
 package net.soundvibe.reacto.vertx.integration;
 
+import com.codahale.metrics.ConsoleReporter;
 import com.netflix.hystrix.HystrixCommandProperties;
 import com.netflix.hystrix.exception.HystrixRuntimeException;
 import io.netty.handler.codec.http.websocketx.WebSocketHandshakeException;
@@ -12,7 +13,9 @@ import net.soundvibe.reacto.client.commands.CommandExecutors;
 import net.soundvibe.reacto.client.events.EventHandlerRegistry;
 import net.soundvibe.reacto.discovery.types.*;
 import net.soundvibe.reacto.errors.CannotDiscoverService;
+import net.soundvibe.reacto.internal.ObjectId;
 import net.soundvibe.reacto.mappers.jackson.JacksonMapper;
+import net.soundvibe.reacto.metric.Metrics;
 import net.soundvibe.reacto.server.*;
 import net.soundvibe.reacto.types.*;
 import net.soundvibe.reacto.vertx.discovery.VertxServiceRegistry;
@@ -24,11 +27,11 @@ import rx.Observable;
 import rx.observers.TestSubscriber;
 import rx.schedulers.Schedulers;
 
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
-import java.util.stream.Collectors;
+import java.util.stream.*;
 
 import static org.junit.Assert.*;
 
@@ -65,7 +68,7 @@ public class MainSuite {
         serviceDiscovery = ServiceDiscovery.create(vertx);
 
         final EventHandlerRegistry eventHandlerRegistry = EventHandlerRegistry.Builder.create()
-                .register(ServiceType.WEBSOCKET, VertxWebSocketEventHandler::create)
+                .register(ServiceType.WEBSOCKET, VertxWebSocketEventHandler::new)
                 .build();
 
         final CommandRegistry mainCommands = createMainCommands();
@@ -165,11 +168,13 @@ public class MainSuite {
     }
 
     private static Event event1Arg(String value) {
-        return Event.create("testEvent", MetaData.of("arg", value));
+        return Event.create("testEvent", MetaData.of("arg", value, "cmdId", id.toString()));
     }
 
+    private final static ObjectId id = ObjectId.get();
+
     private static Command command1Arg(String name, String value) {
-        return Command.create(name, Pair.of("arg", value));
+        return new Command(id, name, Optional.of(MetaData.of("arg", value)), Optional.empty());
     }
 
     @Test
@@ -261,7 +266,8 @@ public class MainSuite {
 
     @Test
     public void shouldCallCommandWithoutArgs() throws Exception {
-        registry.execute(Command.create(COMMAND_WITHOUT_ARGS))
+        Command command = new Command(id, COMMAND_WITHOUT_ARGS, Optional.empty(), Optional.empty());
+        registry.execute(command)
                 .subscribe(testSubscriber);
         assertCompletedSuccessfully();
         testSubscriber.assertValue(event1Arg("ok"));
@@ -379,6 +385,69 @@ public class MainSuite {
                 .subscribe(testSubscriber);
         assertCompletedSuccessfully();
         testSubscriber.assertValue(event1Arg("Called command with arg: foo"));
+    }
+
+    @Test
+    public void shouldExecuteManyCommandsAtOnce() throws Exception {
+        final int count = 100;
+        final CountDownLatch countDownLatch = new CountDownLatch(count);
+
+        ConsoleReporter reporter = ConsoleReporter.forRegistry(Metrics.REGISTRY)
+                .build();
+
+        IntStream.range(0, count)
+                .parallel()
+                .mapToObj(i -> new Feed("Meal" + i))
+                .forEach(feed -> {
+                    TestSubscriber<Animal> testSubscriber = new TestSubscriber<>();
+                    registryTyped.execute(feed, Animal.class)
+                        //.subscribe(Assert::assertNotNull, Throwable::printStackTrace, countDownLatch::countDown)
+                            .subscribe(testSubscriber)
+                    ;
+                    testSubscriber.awaitTerminalEvent();
+                    testSubscriber.assertNoErrors();
+                    testSubscriber.assertCompleted();
+                    testSubscriber.assertValueCount(2);
+                    countDownLatch.countDown();
+                });
+
+
+        countDownLatch.await(120L, TimeUnit.SECONDS);
+        reporter.report();
+    }
+
+    @Test
+    public void shouldReconnectWebSocketIfServerShutsDown() throws Exception {
+        TestSubscriber<Animal> testSubscriber = new TestSubscriber<>();
+        final Feed feed = new Feed("Meal");
+        registryTyped.execute(feed, Animal.class)
+                .subscribe(testSubscriber);
+
+        testSubscriber.awaitTerminalEvent();
+        testSubscriber.assertNoErrors();
+        testSubscriber.assertValueCount(2);
+        //drop connection
+        fallbackVertxServer.stop().toBlocking().subscribe();
+        try {
+            TestSubscriber<Animal> testSubscriber2 = new TestSubscriber<>();
+            registryTyped.execute(feed, Animal.class)
+                    .subscribe(testSubscriber2);
+
+            testSubscriber2.awaitTerminalEvent();
+            testSubscriber2.assertError(ExecutionException.class);
+
+            fallbackVertxServer.start().toBlocking().subscribe();
+
+            TestSubscriber<Animal> testSubscriber3 = new TestSubscriber<>();
+            registryTyped.execute(feed, Animal.class)
+                    .subscribe(testSubscriber3);
+
+            testSubscriber3.awaitTerminalEvent();
+            testSubscriber3.assertNoErrors();
+            testSubscriber3.assertValueCount(2);
+        } catch (Throwable e) {
+            fallbackVertxServer.start().toBlocking().subscribe();
+        }
     }
 
     @Test

@@ -1,7 +1,6 @@
 package net.soundvibe.reacto.vertx.events;
 
 import io.vertx.core.Vertx;
-import io.vertx.servicediscovery.ServiceDiscovery;
 import net.soundvibe.reacto.discovery.types.ServiceRecord;
 import net.soundvibe.reacto.server.*;
 import net.soundvibe.reacto.types.*;
@@ -17,7 +16,6 @@ import static org.junit.Assert.assertEquals;
 public class VertxWebSocketEventHandlerTest {
 
     private final Vertx vertx = Factories.vertx();
-    private final ServiceDiscovery serviceDiscovery = ServiceDiscovery.create(vertx);
 
     @Test
     public void shouldFailWhenHandlingReceivedEvent() throws Exception {
@@ -34,6 +32,7 @@ public class VertxWebSocketEventHandlerTest {
         testSubscriber.awaitTerminalEvent();
         testSubscriber.assertNotCompleted();
         assertEquals(1, testSubscriber.getOnErrorEvents().size());
+        sut.close();
     }
 
     @Test
@@ -47,5 +46,8 @@ public class VertxWebSocketEventHandlerTest {
         assertEquals(left, right);
 
         assertEquals(left.hashCode(), right.hashCode());
+
+        left.close();
+        right.close();
     }
 }
