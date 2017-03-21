@@ -6,7 +6,7 @@
 
     <groupId>net.soundvibe</groupId>
     <artifactId>reacto-vertx</artifactId>
-    <version>1.0.4-SNAPSHOT</version>
+    <version>1.0.4</version>
     <packaging>jar</packaging>
     <name>reacto-vertx</name>
     <description>vert.x implementation of reacto library</description>
@@ -35,7 +35,7 @@
 
     <properties>
         <java.version>1.8</java.version>
-        <reacto.version>1.0.3</reacto.version>
+        <reacto.version>1.0.4</reacto.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <vertx.version>3.4.1</vertx.version>
     </properties>
