@@ -37,7 +37,7 @@
         <java.version>1.8</java.version>
         <reacto.version>1.0.4</reacto.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <vertx.version>3.4.1</vertx.version>
+        <vertx.version>3.4.2</vertx.version>
     </properties>
 
     <distributionManagement>
