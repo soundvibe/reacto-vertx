@@ -65,12 +65,14 @@ public class VertxServer implements Server<HttpServer> {
     }
 
     private void setupRoutes() {
-        httpServer.websocketHandler(new WebSocketCommandHandler(new CommandProcessor(commands), root()));
-        router.route(root() + HYSTRIX_STREAM_PATH)
-            .handler(new SSEHandler(HystrixEventStreamHandler::handle));
-        router.route(root() + "service-discovery/:action")
-            .produces("application/json")
-            .handler(new ServiceDiscoveryHandler(discoveryLifecycle));
+        if (commands.stream().findAny().isPresent()) {
+            httpServer.websocketHandler(new WebSocketCommandHandler(new CommandProcessor(commands), root()));
+            router.route(root() + HYSTRIX_STREAM_PATH)
+                    .handler(new SSEHandler(HystrixEventStreamHandler::handle));
+            router.route(root() + "service-discovery/:action")
+                    .produces("application/json")
+                    .handler(new ServiceDiscoveryHandler(discoveryLifecycle));
+        }
         httpServer.requestHandler(router::accept);
     }
 
