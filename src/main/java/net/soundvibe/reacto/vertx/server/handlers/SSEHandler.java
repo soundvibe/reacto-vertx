@@ -30,6 +30,7 @@ public class SSEHandler implements Handler<RoutingContext> {
                 .putHeader("Cache-Control", "no-cache, no-store, max-age=0, must-revalidate")
                 .putHeader("Content-Encoding", "UTF-8")
                 .putHeader("Pragma", "no-cache")
+                .putHeader("Access-Control-Allow-Origin", "*")
                 .setChunked(true);
         responseConsumer.accept(response);
     }
