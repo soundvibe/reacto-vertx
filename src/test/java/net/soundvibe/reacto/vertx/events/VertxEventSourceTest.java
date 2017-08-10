@@ -1,7 +1,6 @@
 package net.soundvibe.reacto.vertx.events;
 
 import io.vertx.core.Vertx;
-import net.soundvibe.reacto.vertx.server.Factories;
 import org.junit.Test;
 
 import java.util.concurrent.*;
@@ -14,7 +13,7 @@ import static org.junit.Assert.assertNotNull;
  */
 public class VertxEventSourceTest {
 
-    private final Vertx vertx = Factories.vertx();
+    private final Vertx vertx = Vertx.vertx();
 
     @Test
     public void shouldFailWhenTryingToConnect() throws Exception {

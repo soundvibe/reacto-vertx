@@ -43,7 +43,7 @@ public class HystrixEventStreamHandlerTest {
     private final AtomicInteger count = new AtomicInteger(0);
     private final CountDownLatch countDownLatch = new CountDownLatch(1);
     private final EventHandlerRegistry eventHandlerRegistry = EventHandlerRegistry.Builder.create()
-            .register(ServiceType.WEBSOCKET, VertxWebSocketEventHandler::new)
+            .register(ServiceType.WEBSOCKET, serviceRecord -> new VertxWebSocketEventHandler(serviceRecord, vertx))
             .build();
 
     @Before

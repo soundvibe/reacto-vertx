@@ -1,8 +1,6 @@
 package net.soundvibe.reacto.vertx.server;
 
-import io.vertx.core.Vertx;
 import io.vertx.servicediscovery.Record;
-import net.soundvibe.reacto.internal.Lazy;
 import rx.Scheduler;
 import rx.schedulers.Schedulers;
 
@@ -16,12 +14,6 @@ public final class Factories {
 
     private Factories() {
         //
-    }
-
-    private static final Lazy<Vertx> vertxLazy = Lazy.of(Vertx::vertx);
-
-    public static Vertx vertx() {
-        return vertxLazy.get();
     }
 
     public static final Scheduler SINGLE_THREAD = Schedulers.from(Executors.newSingleThreadExecutor());
