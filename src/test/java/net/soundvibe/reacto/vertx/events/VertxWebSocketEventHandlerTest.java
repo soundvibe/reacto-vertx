@@ -4,7 +4,6 @@ import io.vertx.core.Vertx;
 import net.soundvibe.reacto.discovery.types.ServiceRecord;
 import net.soundvibe.reacto.server.*;
 import net.soundvibe.reacto.types.*;
-import net.soundvibe.reacto.vertx.server.Factories;
 import org.junit.Test;
 import rx.observers.TestSubscriber;
 
@@ -15,14 +14,14 @@ import static org.junit.Assert.assertEquals;
  */
 public class VertxWebSocketEventHandlerTest {
 
-    private final Vertx vertx = Factories.vertx();
+    private final Vertx vertx = Vertx.vertx();
 
     @Test
     public void shouldFailWhenHandlingReceivedEvent() throws Exception {
         final ServiceRecord serviceRecord = ServiceRecord.createWebSocketEndpoint(
                 new ServiceOptions("test-service", "/", "0.1", false, 8080),
                 CommandRegistry.empty());
-        VertxWebSocketEventHandler sut = new VertxWebSocketEventHandler(serviceRecord);
+        VertxWebSocketEventHandler sut = new VertxWebSocketEventHandler(serviceRecord, vertx);
 
         final TestSubscriber<Event> testSubscriber = new TestSubscriber<>();
 
@@ -40,8 +39,8 @@ public class VertxWebSocketEventHandlerTest {
         final ServiceRecord serviceRecord = ServiceRecord.createWebSocketEndpoint(
                 new ServiceOptions("test-service", "/", "0.1", false, 8080),
                 CommandRegistry.empty());
-        VertxWebSocketEventHandler left = new VertxWebSocketEventHandler(serviceRecord);
-        VertxWebSocketEventHandler right = new VertxWebSocketEventHandler(serviceRecord);
+        VertxWebSocketEventHandler left = new VertxWebSocketEventHandler(serviceRecord, vertx);
+        VertxWebSocketEventHandler right = new VertxWebSocketEventHandler(serviceRecord, vertx);
 
         assertEquals(left, right);
 

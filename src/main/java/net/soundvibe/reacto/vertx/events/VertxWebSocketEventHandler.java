@@ -1,15 +1,15 @@
 package net.soundvibe.reacto.vertx.events;
 
+import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.*;
 import io.vertx.core.logging.*;
-import net.soundvibe.reacto.client.events.*;
+import net.soundvibe.reacto.client.events.EventHandler;
 import net.soundvibe.reacto.discovery.types.*;
 import net.soundvibe.reacto.errors.*;
 import net.soundvibe.reacto.internal.InternalEvent;
 import net.soundvibe.reacto.mappers.Mappers;
 import net.soundvibe.reacto.types.*;
-import net.soundvibe.reacto.vertx.server.Factories;
 import net.soundvibe.reacto.vertx.server.handlers.WebSocketFrameHandler;
 import rx.Observable;
 import rx.exceptions.MissingBackpressureException;
@@ -38,8 +38,9 @@ public class VertxWebSocketEventHandler implements EventHandler, Closeable {
     private CompletableFuture<WebSocket> webSocketStream;
     private final AtomicBoolean closed = new AtomicBoolean(false);
 
-    public VertxWebSocketEventHandler(ServiceRecord serviceRecord) {
+    public VertxWebSocketEventHandler(ServiceRecord serviceRecord, Vertx vertx) {
         Objects.requireNonNull(serviceRecord, "serviceRecord cannot be null");
+        Objects.requireNonNull(vertx, "vertx cannot be null");
         if (serviceRecord.type != ServiceType.WEBSOCKET)
             throw new IllegalStateException("Unexpected service type: expected WEBSOCKET, but got: " + serviceRecord.type);
         this.serviceRecord = serviceRecord;
@@ -53,7 +54,7 @@ public class VertxWebSocketEventHandler implements EventHandler, Closeable {
                 .setTcpKeepAlive(true)
                 .setDefaultHost(serviceRecord.location.asString(ServiceRecord.LOCATION_HOST).orElse("localhost"))
                 .setDefaultPort(serviceRecord.location.asInteger(ServiceRecord.LOCATION_PORT).orElse(80));
-        this.httpClient = Factories.vertx().createHttpClient(httpClientOptions);
+        this.httpClient = vertx.createHttpClient(httpClientOptions);
         createStream();
     }
 

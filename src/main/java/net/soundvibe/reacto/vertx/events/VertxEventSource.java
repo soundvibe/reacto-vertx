@@ -66,6 +66,7 @@ public final class VertxEventSource implements EventSource {
                 .connectionHandler(this::handleConnectionOpen)
                 .setChunked(true)
                 .putHeader("Accept", "text/event-stream")
+                .putHeader("Connection", "keep-alive")
                 .end();
     }
 
