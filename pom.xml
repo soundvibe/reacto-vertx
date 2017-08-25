@@ -97,7 +97,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.6.1</version>
+                <version>3.6.2</version>
                 <configuration>
                     <source>${java.version}</source>
                     <target>${java.version}</target>
@@ -131,7 +131,7 @@
             <plugin>
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
-                <version>0.7.5.201505241946</version>
+                <version>0.7.9</version>
                 <executions>
                     <execution>
                         <goals>
@@ -151,7 +151,7 @@
             <plugin>
                 <groupId>org.sonatype.plugins</groupId>
                 <artifactId>nexus-staging-maven-plugin</artifactId>
-                <version>1.6.6</version>
+                <version>1.6.8</version>
                 <extensions>true</extensions>
                 <configuration>
                     <serverId>ossrh</serverId>
