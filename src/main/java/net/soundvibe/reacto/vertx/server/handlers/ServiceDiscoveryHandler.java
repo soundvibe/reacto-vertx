@@ -1,12 +1,12 @@
 package net.soundvibe.reacto.vertx.server.handlers;
 
+import io.reactivex.Flowable;
+import io.reactivex.schedulers.Schedulers;
 import io.vertx.core.Handler;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.web.RoutingContext;
 import net.soundvibe.reacto.discovery.ServiceDiscoveryLifecycle;
 import net.soundvibe.reacto.vertx.server.VertxServer;
-import rx.Observable;
-import rx.schedulers.Schedulers;
 
 /**
  * @author OZY on 2016.08.28.
@@ -29,7 +29,7 @@ public class ServiceDiscoveryHandler implements Handler<RoutingContext> {
 
         switch (action) {
             case "start" : {
-                Observable.just(controller)
+                Flowable.just(controller)
                         .flatMap(ServiceDiscoveryLifecycle::register)
                         .subscribeOn(Schedulers.io())
                         .subscribe(
@@ -39,7 +39,7 @@ public class ServiceDiscoveryHandler implements Handler<RoutingContext> {
             }
 
             case "close": {
-                Observable.just(controller)
+                Flowable.just(controller)
                         .flatMap(ServiceDiscoveryLifecycle::unregister)
                         .subscribeOn(Schedulers.io())
                         .subscribe(

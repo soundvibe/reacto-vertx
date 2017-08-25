@@ -1,8 +1,8 @@
 package net.soundvibe.reacto.vertx.server;
 
+import io.reactivex.Scheduler;
+import io.reactivex.schedulers.Schedulers;
 import io.vertx.servicediscovery.Record;
-import rx.Scheduler;
-import rx.schedulers.Schedulers;
 
 import java.util.concurrent.Executors;
 import java.util.function.Predicate;

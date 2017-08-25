@@ -1,5 +1,7 @@
 package net.soundvibe.reacto.vertx.server.handlers;
 
+import io.reactivex.*;
+import io.reactivex.disposables.Disposable;
 import io.vertx.core.Handler;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.ServerWebSocket;
@@ -8,7 +10,6 @@ import net.soundvibe.reacto.internal.InternalEvent;
 import net.soundvibe.reacto.mappers.Mappers;
 import net.soundvibe.reacto.server.CommandProcessor;
 import net.soundvibe.reacto.types.*;
-import rx.*;
 
 import java.util.Objects;
 import java.util.function.Supplier;
@@ -44,7 +45,7 @@ public class WebSocketCommandHandler implements Handler<ServerWebSocket> {
         serverWebSocket
             .setWriteQueueMaxSize(Integer.MAX_VALUE)
             .frameHandler(new WebSocketFrameHandler(buffer -> {
-                final Subscription subscription = Observable.just(buffer.getBytes())
+                final Disposable subscription = Flowable.just(buffer.getBytes())
                         .map(Mappers::fromBytesToCommand)
                         .flatMap(command -> commandProcessor.process(command)
                                 .materialize()
@@ -59,9 +60,9 @@ public class WebSocketCommandHandler implements Handler<ServerWebSocket> {
                 serverWebSocket
                         .exceptionHandler(exception -> {
                             log.error("ServerWebSocket exception: " + exception);
-                            subscription.unsubscribe();
+                            subscription.dispose();
                         })
-                        .closeHandler(__ -> subscription.unsubscribe())
+                        .closeHandler(__ -> subscription.dispose())
                 ;
             }));
     }
@@ -73,17 +74,14 @@ public class WebSocketCommandHandler implements Handler<ServerWebSocket> {
     }
 
     private static void writeEventNotification(Notification<Event> eventNotification, Command command, ServerWebSocket serverWebSocket) {
-        switch (eventNotification.getKind()) {
-            case OnNext:
-                writeOnNext(internalEventToBytes(InternalEvent.onNext(eventNotification.getValue(), command.id.toString())), serverWebSocket);
-                break;
-            case OnError:
-                writeOnNext(internalEventToBytes(InternalEvent.onError(eventNotification.getThrowable(), command.id.toString())), serverWebSocket);
-                break;
-            case OnCompleted:
-                writeOnNext(internalEventToBytes(InternalEvent.onCompleted(command.id.toString())), serverWebSocket);
-                break;
-            default: throw new IllegalStateException("Unknown rx notification type: " + eventNotification);
+        if (eventNotification.isOnNext()) {
+            writeOnNext(internalEventToBytes(InternalEvent.onNext(eventNotification.getValue(), command.id.toString())), serverWebSocket);
+        } else if (eventNotification.isOnError()) {
+            writeOnNext(internalEventToBytes(InternalEvent.onError(eventNotification.getError(), command.id.toString())), serverWebSocket);
+        } else if (eventNotification.isOnComplete()) {
+            writeOnNext(internalEventToBytes(InternalEvent.onCompleted(command.id.toString())), serverWebSocket);
+        } else {
+            throw new IllegalStateException("Unknown rx notification type: " + eventNotification);
         }
     }
 

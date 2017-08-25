@@ -1,11 +1,11 @@
 package net.soundvibe.reacto.vertx.server.handlers;
 
+import io.reactivex.subscribers.TestSubscriber;
 import io.vertx.core.Vertx;
 import io.vertx.core.impl.NoStackTraceThrowable;
 import io.vertx.servicediscovery.*;
 import io.vertx.servicediscovery.types.HttpEndpoint;
 import org.junit.Test;
-import rx.observers.TestSubscriber;
 
 /**
  * @author linas on 17.1.31.
@@ -23,7 +23,7 @@ public class RxWrapTest {
                 .subscribe(testSubscriber);
 
         testSubscriber.awaitTerminalEvent();
-        testSubscriber.assertCompleted();
+        testSubscriber.assertComplete();
         testSubscriber.assertValue(record);
     }
 
@@ -34,7 +34,7 @@ public class RxWrapTest {
                 .subscribe(testSubscriber);
 
         testSubscriber.awaitTerminalEvent();
-        testSubscriber.assertNotCompleted();
+        testSubscriber.assertNotComplete();
         testSubscriber.assertError(NoStackTraceThrowable.class);
     }
 }
