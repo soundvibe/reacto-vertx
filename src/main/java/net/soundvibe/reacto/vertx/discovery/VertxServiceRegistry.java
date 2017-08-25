@@ -1,12 +1,13 @@
 package net.soundvibe.reacto.vertx.discovery;
 
+import io.reactivex.Flowable;
 import io.vertx.core.json.Json;
 import io.vertx.core.logging.*;
 import io.vertx.servicediscovery.*;
 import io.vertx.servicediscovery.Status;
 import io.vertx.servicediscovery.types.HttpEndpoint;
-import net.soundvibe.reacto.client.events.EventHandlerRegistry;
-import net.soundvibe.reacto.discovery.*;
+import net.soundvibe.reacto.client.events.CommandHandlerRegistry;
+import net.soundvibe.reacto.discovery.AbstractServiceRegistry;
 import net.soundvibe.reacto.discovery.types.*;
 import net.soundvibe.reacto.errors.CannotDiscoverService;
 import net.soundvibe.reacto.internal.ObjectId;
@@ -17,7 +18,6 @@ import net.soundvibe.reacto.types.json.JsonObject;
 import net.soundvibe.reacto.utils.*;
 import net.soundvibe.reacto.vertx.server.*;
 import net.soundvibe.reacto.vertx.server.handlers.RxWrap;
-import rx.Observable;
 
 import java.time.Instant;
 import java.util.*;
@@ -43,19 +43,19 @@ public final class VertxServiceRegistry extends AbstractServiceRegistry {
     private final ServiceRecord serviceRecord;
     private final long heartbeatInMillis;
 
-    public VertxServiceRegistry(EventHandlerRegistry eventHandlerRegistry,
+    public VertxServiceRegistry(CommandHandlerRegistry commandHandlerRegistry,
                                 ServiceDiscovery serviceDiscovery,
                                 ServiceRegistryMapper mapper,
                                 ServiceRecord serviceRecord) {
-        this(eventHandlerRegistry, serviceDiscovery, mapper, serviceRecord, DEFAULT_HEARTBEAT_IN_MILLIS);
+        this(commandHandlerRegistry, serviceDiscovery, mapper, serviceRecord, DEFAULT_HEARTBEAT_IN_MILLIS);
     }
 
-    public VertxServiceRegistry(EventHandlerRegistry eventHandlerRegistry,
+    public VertxServiceRegistry(CommandHandlerRegistry commandHandlerRegistry,
                                 ServiceDiscovery serviceDiscovery,
                                 ServiceRegistryMapper mapper,
                                 ServiceRecord serviceRecord,
                                 long heartbeatInMillis) {
-        super(eventHandlerRegistry, mapper);
+        super(commandHandlerRegistry, mapper);
         Objects.requireNonNull(serviceRecord, "serviceRecord cannot be null");
         Objects.requireNonNull(serviceDiscovery, "serviceDiscovery cannot be null");
         this.serviceRecord = serviceRecord;
@@ -69,9 +69,9 @@ public final class VertxServiceRegistry extends AbstractServiceRegistry {
     }
 
     @Override
-    public Observable<Any> register() {
+    public Flowable<Any> register() {
         log.info("Starting to register service into service discovery...");
-        return Observable.just(serviceRecord)
+        return Flowable.just(serviceRecord)
                 .map(serviceRec -> record.updateAndGet(rec -> rec == null ?
                         createVertxRecord(serviceRec).setRegistration(null) :
                         rec))
@@ -91,39 +91,39 @@ public final class VertxServiceRegistry extends AbstractServiceRegistry {
     }
 
     @Override
-    public Observable<Any> unregister() {
+    public Flowable<Any> unregister() {
         log.info("Unregistering service from service discovery...");
-        return Observable.just(record)
+        return Flowable.just(record)
                         .flatMap(r -> r.get() == null ?
-                                Observable.error(new IllegalStateException("Cannot unregister service because it was not registered before")) :
-                                Observable.just(r.get()))
+                                Flowable.error(new IllegalStateException("Cannot unregister service because it was not registered before")) :
+                                Flowable.just(r.get()))
                         .subscribeOn(Factories.SINGLE_THREAD)
                         .observeOn(Factories.SINGLE_THREAD)
                         .flatMap(rec -> removeIf(rec, VertxRecords::areEquals))
                         .map(rec -> record.updateAndGet(r -> r.setRegistration(null)))
                         .takeLast(1)
                         .map(rec -> Any.VOID)
-                        .doOnCompleted(() -> serviceDiscovery.release(serviceDiscovery.getReference(record.get())))
-                        .doOnCompleted(serviceDiscovery::close)
-                        .doOnCompleted(() -> log.info("Service discovery closed successfully"))
+                        .doOnComplete(() -> serviceDiscovery.release(serviceDiscovery.getReference(record.get())))
+                        .doOnComplete(serviceDiscovery::close)
+                        .doOnComplete(() -> log.info("Service discovery closed successfully"))
                 ;
     }
 
     @Override
-    protected Observable<List<ServiceRecord>> findRecordsOf(Command command) {
+    protected Flowable<List<ServiceRecord>> findRecordsOf(Command command) {
         return RxWrap.<List<Record>>using(w -> serviceDiscovery.getRecords(
                 record -> isUpdatedRecently(record, heartbeatInMillis) &&
                         hasCommand(command.name, command.eventType(), record),
                 false, w))
-                .onErrorResumeNext(error -> Observable.error(new CannotDiscoverService(
+                .onErrorResumeNext((Throwable error) -> Flowable.error(new CannotDiscoverService(
                         "Unable to find: " + command.name + ":" + command.eventType(), error)))
                 .map(records -> records.stream()
                         .map(VertxServiceRegistry::createServiceRecord)
                         .collect(toList()));
     }
 
-    public Observable<Any> unpublish(ServiceRecord serviceRecord) {
-        return Observable.just(serviceRecord)
+    public Flowable<Any> unpublish(ServiceRecord serviceRecord) {
+        return Flowable.just(serviceRecord)
                 .map(rec -> createVertxRecord(serviceRecord))
                 .flatMap(rec -> removeIf(rec, VertxRecords::areEquals))
                 .takeLast(1)
@@ -135,7 +135,7 @@ public final class VertxServiceRegistry extends AbstractServiceRegistry {
         return record.get() != null;
     }
 
-    public Observable<Record> cleanServices() {
+    public Flowable<Record> cleanServices() {
         return removeRecordsWithStatus(Status.DOWN);
     }
 
@@ -204,7 +204,7 @@ public final class VertxServiceRegistry extends AbstractServiceRegistry {
     }
 
 
-    private Observable<Record> removeIf(Record newRecord, BiPredicate<Record, Record> filter) {
+    private Flowable<Record> removeIf(Record newRecord, BiPredicate<Record, Record> filter) {
         return RxWrap.<List<Record>>using(w -> serviceDiscovery.getRecords(
                 existingRecord -> filter.test(existingRecord, newRecord),
                 true, w))
@@ -219,8 +219,8 @@ public final class VertxServiceRegistry extends AbstractServiceRegistry {
         return record.get();
     }
 
-    public Observable<Record> publish(Record record) {
-        return Observable.just(record)
+    public Flowable<Record> publish(Record record) {
+        return Flowable.just(record)
                 .flatMap(rec -> removeIf(rec, (existingRecord, newRecord) -> VertxRecords.isDown(
                         existingRecord, heartbeatInMillis)))
                 .map(rec -> {
@@ -233,13 +233,13 @@ public final class VertxServiceRegistry extends AbstractServiceRegistry {
                 );
     }
 
-    public Observable<Record> removeRecordsWithStatus(Status status) {
+    public Flowable<Record> removeRecordsWithStatus(Status status) {
         return RxWrap.<List<Record>>using(w -> serviceDiscovery.getRecords(
                 record -> status.equals(record.getStatus()),
                 true, w))
                 .flatMapIterable(records -> records)
                 .flatMap(rec -> RxWrap.<Void>using(w -> serviceDiscovery.unpublish(rec.getRegistration(), w))
-                        .map(__ -> rec));
+                        .map(__ -> rec).defaultIfEmpty(rec));
     }
 
 }

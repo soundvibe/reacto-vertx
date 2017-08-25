@@ -1,8 +1,8 @@
 package net.soundvibe.reacto.vertx.server.handlers;
 
+import io.reactivex.Flowable;
+import io.reactivex.processors.*;
 import io.vertx.core.*;
-import rx.*;
-import rx.subjects.*;
 
 import java.util.function.Consumer;
 
@@ -11,13 +11,13 @@ import java.util.function.Consumer;
  */
 public final class RxWrap<T> implements Handler<AsyncResult<T>> {
 
-    private final Subject<T, T> subject;
+    private final FlowableProcessor<T> subject;
 
     private RxWrap() {
-        this.subject = ReplaySubject.create();
+        this.subject = ReplayProcessor.create();
     }
 
-    public static <T> Observable<T> using(Consumer<RxWrap<T>> consumer) {
+    public static <T> Flowable<T> using(Consumer<RxWrap<T>> consumer) {
         final RxWrap<T> wrapper = new RxWrap<>();
         consumer.accept(wrapper);
         return wrapper.observe();
@@ -31,12 +31,14 @@ public final class RxWrap<T> implements Handler<AsyncResult<T>> {
         }
 
         if (event.succeeded()) {
-            subject.onNext(event.result());
-            subject.onCompleted();
+            if (event.result() != null) {
+                subject.onNext(event.result());
+            }
+            subject.onComplete();
         }
     }
 
-    private Observable<T> observe() {
+    private Flowable<T> observe() {
         return subject;
     }
 }
