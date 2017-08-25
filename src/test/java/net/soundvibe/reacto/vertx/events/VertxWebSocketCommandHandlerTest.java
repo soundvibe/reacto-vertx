@@ -1,18 +1,18 @@
 package net.soundvibe.reacto.vertx.events;
 
+import io.reactivex.subscribers.TestSubscriber;
 import io.vertx.core.Vertx;
 import net.soundvibe.reacto.discovery.types.ServiceRecord;
 import net.soundvibe.reacto.server.*;
 import net.soundvibe.reacto.types.*;
 import org.junit.Test;
-import rx.observers.TestSubscriber;
 
 import static org.junit.Assert.assertEquals;
 
 /**
  * @author OZY on 2017.01.24.
  */
-public class VertxWebSocketEventHandlerTest {
+public class VertxWebSocketCommandHandlerTest {
 
     private final Vertx vertx = Vertx.vertx();
 
@@ -21,7 +21,7 @@ public class VertxWebSocketEventHandlerTest {
         final ServiceRecord serviceRecord = ServiceRecord.createWebSocketEndpoint(
                 new ServiceOptions("test-service", "/", "0.1", false, 8080),
                 CommandRegistry.empty());
-        VertxWebSocketEventHandler sut = new VertxWebSocketEventHandler(serviceRecord, vertx);
+        VertxWebSocketCommandHandler sut = new VertxWebSocketCommandHandler(serviceRecord, vertx);
 
         final TestSubscriber<Event> testSubscriber = new TestSubscriber<>();
 
@@ -29,8 +29,8 @@ public class VertxWebSocketEventHandlerTest {
                 .subscribe(testSubscriber);
 
         testSubscriber.awaitTerminalEvent();
-        testSubscriber.assertNotCompleted();
-        assertEquals(1, testSubscriber.getOnErrorEvents().size());
+        testSubscriber.assertNotComplete();
+        assertEquals(1, testSubscriber.errorCount());
         sut.close();
     }
 
@@ -39,8 +39,8 @@ public class VertxWebSocketEventHandlerTest {
         final ServiceRecord serviceRecord = ServiceRecord.createWebSocketEndpoint(
                 new ServiceOptions("test-service", "/", "0.1", false, 8080),
                 CommandRegistry.empty());
-        VertxWebSocketEventHandler left = new VertxWebSocketEventHandler(serviceRecord, vertx);
-        VertxWebSocketEventHandler right = new VertxWebSocketEventHandler(serviceRecord, vertx);
+        VertxWebSocketCommandHandler left = new VertxWebSocketCommandHandler(serviceRecord, vertx);
+        VertxWebSocketCommandHandler right = new VertxWebSocketCommandHandler(serviceRecord, vertx);
 
         assertEquals(left, right);
 

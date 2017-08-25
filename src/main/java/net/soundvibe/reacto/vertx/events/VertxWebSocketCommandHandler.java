@@ -1,20 +1,20 @@
 package net.soundvibe.reacto.vertx.events;
 
+import io.reactivex.Flowable;
+import io.reactivex.exceptions.MissingBackpressureException;
+import io.reactivex.processors.*;
+import io.reactivex.schedulers.Schedulers;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.*;
 import io.vertx.core.logging.*;
-import net.soundvibe.reacto.client.events.EventHandler;
+import net.soundvibe.reacto.client.events.CommandHandler;
 import net.soundvibe.reacto.discovery.types.*;
 import net.soundvibe.reacto.errors.*;
 import net.soundvibe.reacto.internal.InternalEvent;
 import net.soundvibe.reacto.mappers.Mappers;
 import net.soundvibe.reacto.types.*;
 import net.soundvibe.reacto.vertx.server.handlers.WebSocketFrameHandler;
-import rx.Observable;
-import rx.exceptions.MissingBackpressureException;
-import rx.schedulers.Schedulers;
-import rx.subjects.*;
 
 import java.io.*;
 import java.util.*;
@@ -27,18 +27,18 @@ import static net.soundvibe.reacto.utils.WebUtils.*;
 /**
  * @author OZY on 2015.11.23.
  */
-public class VertxWebSocketEventHandler implements EventHandler, Closeable {
+public class VertxWebSocketCommandHandler implements CommandHandler, Closeable {
 
-    private static final Logger log = LoggerFactory.getLogger(VertxWebSocketEventHandler.class);
+    private static final Logger log = LoggerFactory.getLogger(VertxWebSocketCommandHandler.class);
     public static final int INITIAL_CAPACITY = 10000;
     private final ServiceRecord serviceRecord;
     private final HttpClient httpClient;
 
-    private final Map<String, Subject<Event, Event>> streams = new ConcurrentHashMap<>(INITIAL_CAPACITY);
+    private final Map<String, FlowableProcessor<Event>> streams = new ConcurrentHashMap<>(INITIAL_CAPACITY);
     private CompletableFuture<WebSocket> webSocketStream;
     private final AtomicBoolean closed = new AtomicBoolean(false);
 
-    public VertxWebSocketEventHandler(ServiceRecord serviceRecord, Vertx vertx) {
+    public VertxWebSocketCommandHandler(ServiceRecord serviceRecord, Vertx vertx) {
         Objects.requireNonNull(serviceRecord, "serviceRecord cannot be null");
         Objects.requireNonNull(vertx, "vertx cannot be null");
         if (serviceRecord.type != ServiceType.WEBSOCKET)
@@ -59,19 +59,19 @@ public class VertxWebSocketEventHandler implements EventHandler, Closeable {
     }
 
     @Override
-    public Observable<Event> observe(Command command) {
+    public Flowable<Event> observe(Command command) {
         final String cmdId = command.id.toString();
-        if (streams.size() > INITIAL_CAPACITY) return Observable.error(new MissingBackpressureException("WebSocket Event Handler exceeded command limit"));
+        if (streams.size() > INITIAL_CAPACITY) return Flowable.error(new MissingBackpressureException("WebSocket Event Handler exceeded command limit"));
 
-        final Observable<Event> eventObservable = streams.compute(cmdId, (id, subject) ->
-                subject != null ? subject : ReplaySubject.create())
-                .doOnUnsubscribe(() -> streams.remove(cmdId));
+        final Flowable<Event> eventObservable = streams.compute(cmdId, (id, subject) ->
+                subject != null ? subject : ReplayProcessor.create())
+                .doOnCancel(() -> streams.remove(cmdId));
 
         if (isClosed()) {
             createStream();
         }
 
-        return Observable.from(webSocketStream, Schedulers.computation())
+        return Flowable.fromFuture(webSocketStream, Schedulers.computation())
                 .doOnNext(webSocket -> sendCommandForExecution(command, webSocket))
                 .flatMap(webSocket -> eventObservable);
     }
@@ -85,7 +85,7 @@ public class VertxWebSocketEventHandler implements EventHandler, Closeable {
     public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
-        VertxWebSocketEventHandler that = (VertxWebSocketEventHandler) o;
+        VertxWebSocketCommandHandler that = (VertxWebSocketCommandHandler) o;
         return Objects.equals(serviceRecord, that.serviceRecord);
     }
 
@@ -177,7 +177,7 @@ public class VertxWebSocketEventHandler implements EventHandler, Closeable {
         if (log.isDebugEnabled()) {
             log.debug("InternalEvent [" + cmdId + "] is being handled: " + internalEvent.name + ": " + internalEvent.eventType);
         }
-        final Subject<Event, Event> subject = streams.get(cmdId);
+        final FlowableProcessor<Event> subject = streams.get(cmdId);
         if (subject == null) return;
         switch (internalEvent.eventType) {
             case NEXT: {
@@ -193,7 +193,7 @@ public class VertxWebSocketEventHandler implements EventHandler, Closeable {
             }
             case COMPLETED: {
                 streams.remove(cmdId);
-                subject.onCompleted();
+                subject.onComplete();
                 break;
             }
         }

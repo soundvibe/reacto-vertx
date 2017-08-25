@@ -1,21 +1,21 @@
 package net.soundvibe.reacto.vertx.discovery;
 
+import io.reactivex.subscribers.TestSubscriber;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.Json;
 import io.vertx.servicediscovery.*;
 import io.vertx.servicediscovery.Status;
 import io.vertx.servicediscovery.types.HttpEndpoint;
-import net.soundvibe.reacto.client.events.EventHandlerRegistry;
+import net.soundvibe.reacto.client.events.CommandHandlerRegistry;
 import net.soundvibe.reacto.discovery.types.*;
 import net.soundvibe.reacto.errors.CannotDiscoverService;
 import net.soundvibe.reacto.mappers.jackson.JacksonMapper;
 import net.soundvibe.reacto.server.ServiceOptions;
 import net.soundvibe.reacto.types.*;
 import net.soundvibe.reacto.utils.WebUtils;
-import net.soundvibe.reacto.vertx.events.VertxWebSocketEventHandler;
-import net.soundvibe.reacto.vertx.types.*;
+import net.soundvibe.reacto.vertx.events.VertxWebSocketCommandHandler;
+import net.soundvibe.reacto.vertx.types.DemoServiceRegistryMapper;
 import org.junit.Test;
-import rx.observers.TestSubscriber;
 
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
@@ -34,12 +34,12 @@ public class VertxServiceRegistryTest {
     private final Vertx vertx = Vertx.vertx();
     private final ServiceDiscovery serviceDiscovery = ServiceDiscovery.create(vertx);
 
-    private final EventHandlerRegistry eventHandlerRegistry = EventHandlerRegistry.Builder.create()
-            .register(ServiceType.WEBSOCKET, serviceRecord -> new VertxWebSocketEventHandler(serviceRecord, vertx))
+    private final CommandHandlerRegistry commandHandlerRegistry = CommandHandlerRegistry.Builder.create()
+            .register(ServiceType.WEBSOCKET, serviceRecord -> new VertxWebSocketCommandHandler(serviceRecord, vertx))
             .build();
 
     private final VertxServiceRegistry sut = new VertxServiceRegistry(
-            eventHandlerRegistry,
+            commandHandlerRegistry,
             serviceDiscovery,
             new DemoServiceRegistryMapper(),
             ServiceRecord.createWebSocketEndpoint(
@@ -111,7 +111,7 @@ public class VertxServiceRegistryTest {
                 new ServiceOptions("testService", "test/", "0.1", false, 8123),
                 Collections.emptyList());
         final VertxServiceRegistry serviceRegistry = new VertxServiceRegistry(
-                eventHandlerRegistry, serviceDiscovery,
+                commandHandlerRegistry, serviceDiscovery,
                 new JacksonMapper(Json.mapper), record);
 
 

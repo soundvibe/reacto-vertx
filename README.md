@@ -7,8 +7,6 @@
 
 ### Implements
 * Http Server
-* Service Registry using different backends
-* Event Handlers through WebSockets
-* Handlers for reacto and Hystrix metrics
-* SSE handler
+* Service Registry using different back-ends
 * Command Handler through WebSockets
+* SSE handler

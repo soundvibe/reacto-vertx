@@ -1,5 +1,6 @@
 package net.soundvibe.reacto.vertx.server;
 
+import io.reactivex.Flowable;
 import io.vertx.core.http.HttpServer;
 import io.vertx.core.logging.*;
 import io.vertx.ext.web.Router;
@@ -7,7 +8,6 @@ import net.soundvibe.reacto.discovery.ServiceDiscoveryLifecycle;
 import net.soundvibe.reacto.server.*;
 import net.soundvibe.reacto.types.Any;
 import net.soundvibe.reacto.vertx.server.handlers.*;
-import rx.Observable;
 
 import java.util.Objects;
 
@@ -50,8 +50,8 @@ public class VertxServer implements Server<HttpServer> {
     }
 
     @Override
-    public Observable<HttpServer> start() {
-        return Observable.just(httpServer)
+    public Flowable<HttpServer> start() {
+        return Flowable.just(httpServer)
                 .doOnNext(server -> setupRoutes())
                 .flatMap(server -> RxWrap.<HttpServer>using(httpServer::listen))
                 .flatMap(server -> discoveryLifecycle.register()
@@ -59,16 +59,14 @@ public class VertxServer implements Server<HttpServer> {
     }
 
     @Override
-    public Observable<Any> stop() {
+    public Flowable<Any> stop() {
         return RxWrap.<Void>using(httpServer::close)
                 .flatMap(__ -> discoveryLifecycle.unregister());
     }
 
     private void setupRoutes() {
-        if (commands.stream().findAny().isPresent()) {
+        if (!commands.isEmpty()) {
             httpServer.websocketHandler(new WebSocketCommandHandler(new CommandProcessor(commands), root()));
-            router.route(root() + HYSTRIX_STREAM_PATH)
-                    .handler(new SSEHandler(HystrixEventStreamHandler::handle));
             router.route(root() + "service-discovery/:action")
                     .produces("application/json")
                     .handler(new ServiceDiscoveryHandler(discoveryLifecycle));
