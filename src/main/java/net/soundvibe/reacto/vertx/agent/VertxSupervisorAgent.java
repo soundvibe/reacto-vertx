@@ -2,7 +2,6 @@ package net.soundvibe.reacto.vertx.agent;
 
 import io.reactivex.Flowable;
 import io.reactivex.disposables.Disposable;
-import io.reactivex.schedulers.Schedulers;
 import io.vertx.core.*;
 import io.vertx.core.eventbus.MessageConsumer;
 import io.vertx.core.shareddata.Lock;
@@ -194,14 +193,14 @@ public final class VertxSupervisorAgent extends AbstractVerticle {
     private void checkForMissingAgents(ClusterManager clusterManager) {
         if (isClusterSyncRunning()) return;
 
-        clusterSyncSubscription = Flowable.interval(0, 5, TimeUnit.SECONDS, Schedulers.single())
+        clusterSyncSubscription = Flowable.interval(0, 5, TimeUnit.SECONDS)
                 .map(i -> findRunningAgents(nodes, agent.name()))
                 .doOnNext(runningAgents -> syncDeploymentOptions())
                 .takeWhile(runningAgents -> runningAgents.size() < vertxAgentDeploymentOptions.getDesiredNumberOfInstances())
                 .subscribe(
                         runningAgents -> {
                             log.info("There are less nodes [{}] than desired [{}], will try to redeploy agent: {}",
-                                    runningAgents.size(), vertxAgentDeploymentOptions.getClusterInstances(), agent.name());
+                                    runningAgents.size(), vertxAgentDeploymentOptions.getDesiredNumberOfInstances(), agent.name());
                             redeployAgentIfNeeded(runningAgents, clusterManager);
                         },
                         error -> log.error("Error when trying to set desired cluster state: ", error),
@@ -217,7 +216,7 @@ public final class VertxSupervisorAgent extends AbstractVerticle {
         if (isClusterSyncRunning()) return;
         if (!newAgent.name.equals(this.agent.name())) return;
 
-        clusterSyncSubscription = Flowable.interval(0, 5, TimeUnit.SECONDS, Schedulers.single())
+        clusterSyncSubscription = Flowable.interval(0, 5, TimeUnit.SECONDS)
                 .map(i -> findRunningAgents(nodes, this.agent.name()))
                 .doOnNext(runningAgents -> syncDeploymentOptions())
                 .takeWhile(runningAgents -> runningAgents.size() > vertxAgentDeploymentOptions.getDesiredNumberOfInstances())
@@ -266,18 +265,18 @@ public final class VertxSupervisorAgent extends AbstractVerticle {
                 .flatMap(vertxAgents -> vertxAgents.stream()
                         .filter(vertxAgent -> vertxAgent.nodeId.equals(clusterManager.getNodeID()))
                         .findAny())
-                .ifPresent(toDeploy ->  clusterManager.getLockWithTimeout(LOCK_REACTO_SUPERVISOR + agent.name(), 5000L, handler -> {
-                    if (handler.succeeded()) {
-                        final Lock lock = handler.result();
-                        vertxAgentSystem.run(agentFactory)
-                                .subscribe(
-                                        lock::release,
-                                        error -> {
-                                            log.error("Unable to redeploy failed agent: " + agent.name(), error);
-                                            lock.release();
-                                        });
+                .ifPresent(toDeploy ->  clusterManager.getLockWithTimeout(LOCK_REACTO_SUPERVISOR + agent.name(), 5000L, locker -> {
+                    if (locker.succeeded()) {
+                        final Lock lock = locker.result();
+                        try {
+                            vertxAgentSystem.run(agentFactory).blockingAwait();
+                        } catch (Throwable e) {
+                            log.error("Unable to redeploy failed agent: " + agent.name(), e);
+                        } finally {
+                            lock.release();
+                        }
                     } else {
-                        log.warn("Unable to obtain lock", handler.cause());
+                        log.warn("Unable to obtain lock", locker.cause());
                     }
                 }));
     }

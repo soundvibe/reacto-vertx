@@ -1,12 +1,14 @@
 package net.soundvibe.reacto.vertx.agent;
 
-import io.reactivex.Flowable;
+import org.reactivestreams.Publisher;
 
 public interface Agent<T> {
 
-    String name();
+    default String name() {
+        return getClass().getSimpleName();
+    }
 
-    Flowable<T> run();
+    Publisher<T> run();
 
     AgentDeploymentOptions deploymentOptions();
 

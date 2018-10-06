@@ -12,9 +12,9 @@ import java.util.function.Consumer;
 public abstract class ReactoAgent<T> extends AbstractVerticle implements Agent<T> {
 
     private static final Logger log = LoggerFactory.getLogger(ReactoAgent.class);
-    private final Counter eventCounter = Metrics.REGISTRY.counter(MetricRegistry.name(getClass(), "eventCount"));
-    private final Counter errorCounter = Metrics.REGISTRY.counter(MetricRegistry.name(getClass(), "errorCount"));
+    private final Meter errorMeter = Metrics.REGISTRY.meter(MetricRegistry.name(getClass(), "errorMeter"));
     private final Timer timer = Metrics.REGISTRY.timer(MetricRegistry.name(getClass(), "flowDuration"));
+    private final Meter eventMeter = Metrics.REGISTRY.meter(MetricRegistry.name(getClass(), "eventMeter"));
 
     private final String name;
     private final AgentDeploymentOptions agentDeploymentOptions;
@@ -78,10 +78,10 @@ public abstract class ReactoAgent<T> extends AbstractVerticle implements Agent<T
     }
 
     private void handleEvent(T event) {
-        eventCounter.inc();
+        eventMeter.mark();
     }
     private void handleError(Throwable error) {
-        errorCounter.inc();
+        errorMeter.mark();
         onError.accept(error);
     }
     private void handleComplete(Timer.Context timerCtx) {
