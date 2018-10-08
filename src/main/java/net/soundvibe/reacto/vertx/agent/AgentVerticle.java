@@ -4,43 +4,47 @@ import com.codahale.metrics.*;
 import io.reactivex.Flowable;
 import io.reactivex.disposables.Disposable;
 import io.vertx.core.*;
+import net.soundvibe.reacto.agent.*;
 import net.soundvibe.reacto.metric.Metrics;
 import org.slf4j.*;
 
 import java.util.function.Consumer;
 
-public abstract class ReactoAgent<T> extends AbstractVerticle implements Agent<T> {
+public abstract class AgentVerticle<T> extends AbstractVerticle implements Agent<T> {
 
-    private static final Logger log = LoggerFactory.getLogger(ReactoAgent.class);
+    private static final Logger log = LoggerFactory.getLogger(AgentVerticle.class);
     private final Meter errorMeter = Metrics.REGISTRY.meter(MetricRegistry.name(getClass(), "errorMeter"));
     private final Timer timer = Metrics.REGISTRY.timer(MetricRegistry.name(getClass(), "flowDuration"));
     private final Meter eventMeter = Metrics.REGISTRY.meter(MetricRegistry.name(getClass(), "eventMeter"));
 
     private final String name;
-    private final AgentDeploymentOptions agentDeploymentOptions;
+    private final AgentOptions agentOptions;
 
     private Consumer<Throwable> onError;
     private Runnable onComplete;
     private Disposable disposable;
 
-    protected ReactoAgent(AgentDeploymentOptions agentDeploymentOptions) {
+    protected AgentVerticle(AgentOptions agentOptions) {
         this.name = getClass().getSimpleName();
-        this.agentDeploymentOptions = agentDeploymentOptions;
+        this.agentOptions = agentOptions;
     }
 
-    protected ReactoAgent(String name, AgentDeploymentOptions agentDeploymentOptions) {
+    protected AgentVerticle(String name, AgentOptions agentOptions) {
         this.name = name;
-        this.agentDeploymentOptions = agentDeploymentOptions;
+        this.agentOptions = agentOptions;
     }
 
+    @Override
     public abstract Flowable<T> run();
 
+    @Override
     public String name() {
         return name;
     }
 
-    public AgentDeploymentOptions deploymentOptions() {
-        return agentDeploymentOptions;
+    @Override
+    public AgentOptions options() {
+        return agentOptions;
     }
 
     @Override

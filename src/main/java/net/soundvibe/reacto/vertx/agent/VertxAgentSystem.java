@@ -1,9 +1,13 @@
 package net.soundvibe.reacto.vertx.agent;
 
+import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import io.reactivex.Completable;
 import io.vertx.core.*;
 import io.vertx.core.impl.VertxInternal;
+import io.vertx.core.json.Json;
 import io.vertx.core.spi.cluster.ClusterManager;
+import net.soundvibe.reacto.agent.AgentSystem;
 import org.slf4j.*;
 
 import java.time.Duration;
@@ -62,6 +66,12 @@ public final class VertxAgentSystem implements AgentSystem<VertxAgentFactory>, i
         return new VertxAgentSystem(vertx, group);
     }
 
+    static {
+        Json.mapper.registerModule(new JavaTimeModule());
+        Json.prettyMapper.registerModule(new JavaTimeModule());
+        Json.mapper.registerModule(new Jdk8Module());
+        Json.prettyMapper.registerModule(new Jdk8Module());
+    }
 
     @Override
     public Completable run(VertxAgentFactory agentFactory) {

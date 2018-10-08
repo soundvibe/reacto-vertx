@@ -2,35 +2,36 @@ package net.soundvibe.reacto.vertx.agent;
 
 import io.vertx.core.DeploymentOptions;
 import io.vertx.core.json.JsonObject;
+import net.soundvibe.reacto.agent.AgentOptions;
 
 import java.util.Optional;
 
-public final class VertxAgentDeploymentOptions extends AgentDeploymentOptions {
+public final class VertxAgentOptions extends AgentOptions {
 
     private static final String KEY_REACTO_CONFIG = "__reactoConfig__";
     private static final String KEY_CLUSTER_INSTANCES = "clusterInstances";
     private final DeploymentOptions deploymentOptions;
 
-    private VertxAgentDeploymentOptions(DeploymentOptions deploymentOptions) {
+    private VertxAgentOptions(DeploymentOptions deploymentOptions) {
         this.deploymentOptions = deploymentOptions;
     }
 
-    public static VertxAgentDeploymentOptions from(DeploymentOptions deploymentOptions) {
-        final VertxAgentDeploymentOptions vertxAgentDeploymentOptions = new VertxAgentDeploymentOptions(deploymentOptions);
+    public static VertxAgentOptions from(DeploymentOptions deploymentOptions) {
+        final VertxAgentOptions vertxAgentOptions = new VertxAgentOptions(deploymentOptions);
 
         Optional.ofNullable(deploymentOptions.getConfig())
                 .map(config -> config.getJsonObject(KEY_REACTO_CONFIG))
-                .ifPresent(reactoConfig -> vertxAgentDeploymentOptions
+                .ifPresent(reactoConfig -> vertxAgentOptions
                         .setClusterInstances(reactoConfig.getInteger(KEY_CLUSTER_INSTANCES, 1)));
 
-        return vertxAgentDeploymentOptions;
+        return vertxAgentOptions;
     }
 
-    public static VertxAgentDeploymentOptions from(JsonObject jsonObject) {
+    public static VertxAgentOptions from(JsonObject jsonObject) {
         return from(new DeploymentOptions(jsonObject));
     }
 
-    public static VertxAgentDeploymentOptions from(String jsonString) {
+    public static VertxAgentOptions from(String jsonString) {
         return from(new DeploymentOptions(new JsonObject(jsonString)));
     }
 
@@ -40,7 +41,7 @@ public final class VertxAgentDeploymentOptions extends AgentDeploymentOptions {
     }
 
     @Override
-    public VertxAgentDeploymentOptions setHA(boolean value) {
+    public VertxAgentOptions setHA(boolean value) {
         deploymentOptions.setHa(value);
         super.setHA(value);
         return this;

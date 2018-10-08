@@ -11,6 +11,7 @@ import java.util.*;
 import java.util.concurrent.*;
 
 import static io.vertx.core.logging.LoggerFactory.LOGGER_DELEGATE_FACTORY_CLASS_NAME;
+import static net.soundvibe.reacto.vertx.agent.VertxSupervisorAgent.findRunningAgents;
 import static org.junit.Assert.assertEquals;
 
 public class ClusteredVertxSupervisorAgentTest {
@@ -45,11 +46,11 @@ public class ClusteredVertxSupervisorAgentTest {
 
     @Test
     public void shouldRedeployOnOtherInstanceAfterFailure() throws InterruptedException {
-        agentSystem1.run(TestAgent::new).blockingAwait();
-        agentSystem2.run(TestAgent::new).blockingAwait();
+        agentSystem1.run(TestAgentVerticle::new).blockingAwait();
+        agentSystem2.run(TestAgentVerticle::new).blockingAwait();
 
         final Map<String, String> agents = clusterManager.getSyncMap(VertxSupervisorAgent.MAP_NODES);
-        final List<VertxAgent> runningAgents = VertxSupervisorAgent.findRunningAgents(agents, TestAgent.class.getSimpleName());
+        final List<VertxAgent> runningAgents = findRunningAgents(agents, TestAgentVerticle.class.getSimpleName(), 1);
         assertEquals("Should be both instances up",2, runningAgents.size());
 
         //shutdown one instance
@@ -58,6 +59,27 @@ public class ClusteredVertxSupervisorAgentTest {
         Thread.sleep(2000);
         //wait for redeploy to happen
         assertEquals("Should be 2 instances after redeployment",2, runningAgents.size());
+    }
+
+    @Test
+    public void shouldUpdateToNewVersion() throws InterruptedException {
+        agentSystem1.run(() -> new TestAgentVerticle(2, 2, 1)).blockingAwait();
+
+        final Map<String, String> agents = clusterManager.getSyncMap(VertxSupervisorAgent.MAP_NODES);
+        final List<VertxAgent> runningAgents = findRunningAgents(agents, TestAgentVerticle.class.getSimpleName(), 1);
+        assertEquals("Should be 1 instance up",1, runningAgents.size());
+
+        agentSystem2.run(() -> new TestAgentVerticle(1, 2, 1)).blockingAwait();
+        final List<VertxAgent> runningAgents2 = findRunningAgents(agents, TestAgentVerticle.class.getSimpleName(), 1);
+        assertEquals("Should be 2 instances up",2, runningAgents2.size());
+
+        agentSystem1.run(() -> new TestAgentVerticle(2, 2, 2)).blockingAwait();
+
+        //wait for redeploy to happen
+        final List<VertxAgent> runningAgentsNewVersion = findRunningAgents(agents, TestAgentVerticle.class.getSimpleName(), 2);
+        assertEquals("Should be 1 new version instance after deployment",1, runningAgentsNewVersion.size());
+        final List<VertxAgent> runningAgentsOldVersion = findRunningAgents(agents, TestAgentVerticle.class.getSimpleName(), 1);
+        assertEquals("Should be 2 old version instance running",2, runningAgentsOldVersion.size());
     }
 
     private static VertxOptions vertxOptions() {
@@ -76,19 +98,34 @@ public class ClusteredVertxSupervisorAgentTest {
         countDownLatch.await(10, TimeUnit.SECONDS);
     }
 
-    public class TestAgent extends ReactoAgent<Long> {
+    public class TestAgentVerticle extends AgentVerticle<Long> {
 
-        TestAgent() {
-            super(VertxAgentDeploymentOptions.from(new DeploymentOptions()
-                    .setInstances(1)
-                    .setHa(true))
+        private final int version;
+
+        TestAgentVerticle() {
+            super(VertxAgentOptions.from(new DeploymentOptions())
                     .setHA(true)
+                    .setMaxInstancesOnNode(2)
                     .setClusterInstances(2));
+            this.version = 1;
+        }
+
+        public TestAgentVerticle(int clusterInstances, int maxInstances, int version) {
+            super(VertxAgentOptions.from(new DeploymentOptions())
+                    .setHA(true)
+                    .setMaxInstancesOnNode(maxInstances)
+                    .setClusterInstances(clusterInstances));
+            this.version = version;
         }
 
         @Override
         public Flowable<Long> run() {
             return Flowable.interval(0, 1, TimeUnit.SECONDS);
+        }
+
+        @Override
+        public int version() {
+            return version;
         }
 
     }

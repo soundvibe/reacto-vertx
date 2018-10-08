@@ -1,3 +1,5 @@
 package net.soundvibe.reacto.vertx.agent;
 
-public interface VertxAgentFactory extends AgentFactory<ReactoAgent<?>> {}
+import net.soundvibe.reacto.agent.AgentFactory;
+
+public interface VertxAgentFactory extends AgentFactory<AgentVerticle<?>> {}

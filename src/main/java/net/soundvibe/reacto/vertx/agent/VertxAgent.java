@@ -2,6 +2,7 @@ package net.soundvibe.reacto.vertx.agent;
 
 import io.vertx.core.json.Json;
 
+import java.time.Instant;
 import java.util.Objects;
 
 public final class VertxAgent {
@@ -11,17 +12,21 @@ public final class VertxAgent {
     public final String name;
     public final String group;
     public final String supervisorDeploymentId;
+    public final int version;
+    public final Instant updatedOn;
 
     private VertxAgent() {
-        this(null, null, null, null, null);
+        this(null, null, null, null, null, 0, null);
     }
 
-    public VertxAgent(String nodeId, String agentDeploymentId, String name, String group, String supervisorDeploymentId) {
+    public VertxAgent(String nodeId, String agentDeploymentId, String name, String group, String supervisorDeploymentId, int version, Instant updatedOn) {
         this.nodeId = nodeId;
         this.agentDeploymentId = agentDeploymentId;
         this.name = name;
         this.group = group;
         this.supervisorDeploymentId = supervisorDeploymentId;
+        this.version = version;
+        this.updatedOn = updatedOn;
     }
 
     @Override
@@ -29,16 +34,18 @@ public final class VertxAgent {
         if (this == o) return true;
         if (!(o instanceof VertxAgent)) return false;
         final VertxAgent that = (VertxAgent) o;
-        return Objects.equals(nodeId, that.nodeId) &&
+        return version == that.version &&
+                Objects.equals(nodeId, that.nodeId) &&
                 Objects.equals(agentDeploymentId, that.agentDeploymentId) &&
                 Objects.equals(name, that.name) &&
                 Objects.equals(group, that.group) &&
-                Objects.equals(supervisorDeploymentId, that.supervisorDeploymentId);
+                Objects.equals(supervisorDeploymentId, that.supervisorDeploymentId) &&
+                Objects.equals(updatedOn, that.updatedOn);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(nodeId, agentDeploymentId, name, group, supervisorDeploymentId);
+        return Objects.hash(nodeId, agentDeploymentId, name, group, supervisorDeploymentId, version, updatedOn);
     }
 
     public static VertxAgent fromJson(String json) {
@@ -61,6 +68,8 @@ public final class VertxAgent {
                 ", name='" + name + '\'' +
                 ", group='" + group + '\'' +
                 ", supervisorDeploymentId='" + supervisorDeploymentId + '\'' +
+                ", version=" + version +
+                ", updatedOn=" + updatedOn +
                 '}';
     }
 }
