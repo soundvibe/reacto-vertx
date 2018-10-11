@@ -316,28 +316,32 @@ public final class VertxSupervisorAgent extends AbstractVerticle {
         log.error("Error in child agent " + agent.name(), error);
         log.info("Restarting agent {}", agent.name());
         log.info("Using [{}'s] restart strategy: {}", agent.name(), restartStrategy.getClass().getSimpleName());
-        restartStrategy.restart(() -> {
+        boolean wasRestarted = restartStrategy.restart(() -> {
             synchronized (this) {
                 initAgent();
                 restartCounter.inc();
                 agent.start();
             }
         });
+        if (!wasRestarted) {
+            undeploy();
+        }
     }
 
     private void handleChildComplete() {
         log.info("Got child completed: {}", agent.name());
-        final String depId = deploymentId.get();
-        if (depId == null) return;
         if (vertxAgentOptions.isUndeployOnComplete()) {
-            vertx.undeploy(depId, handler -> {
-                if (handler.succeeded()) {
-                    deploymentId.set(null);
-                    log.info("Undeployed completed agent {}", agent.name());
-                } else {
-                    log.error("Unable to undeploy " + agent.name(), handler.cause());
-                }
-            });
+            undeploy();
         }
+    }
+
+    private void undeploy() {
+        vertx.undeploy(vertxAgent.supervisorDeploymentId, handler -> {
+            if (handler.succeeded()) {
+                log.info("Undeployed agent and it's supervisor {}", agent.name());
+            } else {
+                log.error("Unable to undeploy " + agent.name(), handler.cause());
+            }
+        });
     }
 }
