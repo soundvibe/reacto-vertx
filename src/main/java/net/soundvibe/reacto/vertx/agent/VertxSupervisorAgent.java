@@ -136,16 +136,20 @@ public final class VertxSupervisorAgent extends AbstractVerticle {
                 agent.version(), Instant.now());
     }
 
+    private static final Object lock = new Object();
+
     private void addToHA() {
-        final String nodeJson = nodes.get(vertxAgent.nodeId);
-        if (nodeJson == null) {
-            nodes.put(vertxAgent.nodeId, toVertxNode().encode());
-        } else {
-            final VertxNode vertxNode = VertxNode.fromJson(nodeJson);
-            if (vertxNode.agents.stream()
-                    .noneMatch(ag -> ag.agentDeploymentId.equals(vertxAgent.agentDeploymentId))) {
-                vertxNode.agents.add(vertxAgent);
-                nodes.put(vertxNode.nodeId, vertxNode.encode());
+        synchronized (lock) {
+            final String nodeJson = nodes.get(vertxAgent.nodeId);
+            if (nodeJson == null) {
+                nodes.put(vertxAgent.nodeId, toVertxNode().encode());
+            } else {
+                final VertxNode vertxNode = VertxNode.fromJson(nodeJson);
+                if (vertxNode.agents.stream()
+                        .noneMatch(ag -> ag.agentDeploymentId.equals(vertxAgent.agentDeploymentId))) {
+                    vertxNode.agents.add(vertxAgent);
+                    nodes.put(vertxNode.nodeId, vertxNode.encode());
+                }
             }
         }
     }
