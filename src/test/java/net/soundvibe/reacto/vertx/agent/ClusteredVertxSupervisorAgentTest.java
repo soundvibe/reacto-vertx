@@ -35,11 +35,13 @@ public class ClusteredVertxSupervisorAgentTest {
     }
 
     @After
-    public void tearDown() {
+    public void tearDown() throws InterruptedException {
         if (agentSystem1 != null) {
+            leaveCluster(agentSystem1);
             agentSystem1.close();
         }
         if (agentSystem2 != null) {
+            leaveCluster(agentSystem2);
             agentSystem2.close();
         }
     }
@@ -63,9 +65,11 @@ public class ClusteredVertxSupervisorAgentTest {
 
     @Test
     public void shouldUpdateToNewVersion() throws InterruptedException {
+        final Map<String, String> agents = clusterManager.getSyncMap(VertxSupervisorAgent.MAP_NODES);
+        assertEquals("Should be 0 instances up", 0, findRunningAgents(agents, TestAgentVerticle.class.getSimpleName(), 1).size());
+
         agentSystem1.run(() -> new TestAgentVerticle(2, 2, 1)).blockingAwait();
 
-        final Map<String, String> agents = clusterManager.getSyncMap(VertxSupervisorAgent.MAP_NODES);
         final List<VertxAgent> runningAgents = findRunningAgents(agents, TestAgentVerticle.class.getSimpleName(), 1);
         assertEquals("Should be 1 instance up",1, runningAgents.size());
 

@@ -77,6 +77,8 @@ public final class VertxAgentSystem implements AgentSystem<VertxAgentFactory>, i
     public Completable run(VertxAgentFactory agentFactory) {
         return Completable.create(emitter -> {
             final String uuid = UUID.randomUUID().toString();
+            //todo deploy only if cluster instance size is less than actual size
+
             final VertxSupervisorAgent supervisorAgent = new VertxSupervisorAgent(this, agentFactory);
             vertx.deployVerticle(supervisorAgent,
                     new DeploymentOptions()

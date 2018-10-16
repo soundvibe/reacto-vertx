@@ -98,7 +98,6 @@ public final class VertxSupervisorAgent extends AbstractVerticle {
                         .filter(clusterManager -> vertxAgentOptions.isHA())
                         .ifPresent(clusterManager -> {
                             setAgentInfo(clusterManager);
-                            clearOldHaEntries(clusterManager);
                             addToHA();
                             listenForClusterChanges(clusterManager);
                         });
@@ -113,21 +112,6 @@ public final class VertxSupervisorAgent extends AbstractVerticle {
         } catch (Throwable e) {
             log.error("Deployment error: ", e);
             future.fail(e);
-        }
-    }
-
-    private void clearOldHaEntries(ClusterManager clusterManager) {
-        if (clusterManager.getNodes().size() == 1) {
-            log.info("We are only node in the cluster. Making sure HA map does not contain more nodes");
-            clusterManager.getLockWithTimeout("reacto-ha", 10000, handler -> {
-                if (handler.succeeded()) {
-                    if (clusterManager.getNodes().size() == 1) {
-                        if (!nodes.isEmpty()) {
-                            nodes.clear();
-                        }
-                    }
-                }
-            });
         }
     }
 
@@ -150,6 +134,18 @@ public final class VertxSupervisorAgent extends AbstractVerticle {
                     vertxNode.agents.add(vertxAgent);
                     nodes.put(vertxNode.nodeId, vertxNode.encode());
                 }
+            }
+        }
+    }
+
+    private void removeFromHA(String supervisorDeploymentId) {
+        synchronized (lock) {
+            final String nodeJson = nodes.get(vertxAgent.nodeId);
+            if (nodeJson != null) {
+                final VertxNode vertxNode = VertxNode.fromJson(nodeJson);
+                vertxNode.agents
+                        .removeIf(a -> a.supervisorDeploymentId.equals(supervisorDeploymentId));
+                nodes.put(vertxAgent.nodeId, vertxNode.encode());
             }
         }
     }
@@ -276,6 +272,7 @@ public final class VertxSupervisorAgent extends AbstractVerticle {
                             vertx.undeploy(toUnDeploy.supervisorDeploymentId, undeploy -> {
                                 if (undeploy.succeeded()) {
                                     log.info("Excessive agent undeployed successfully: {}", toUnDeploy);
+                                    removeFromHA(toUnDeploy.supervisorDeploymentId);
                                 }
                                 lock.release();
                             });
@@ -343,6 +340,7 @@ public final class VertxSupervisorAgent extends AbstractVerticle {
         vertx.undeploy(vertxAgent.supervisorDeploymentId, handler -> {
             if (handler.succeeded()) {
                 log.info("Undeployed agent and it's supervisor {}", agent.name());
+                removeFromHA(vertxAgent.supervisorDeploymentId);
             } else {
                 log.error("Unable to undeploy " + agent.name(), handler.cause());
             }
