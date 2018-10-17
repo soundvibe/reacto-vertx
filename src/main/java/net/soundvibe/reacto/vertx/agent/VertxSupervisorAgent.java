@@ -40,7 +40,8 @@ public final class VertxSupervisorAgent extends AbstractVerticle {
     private VertxAgentOptions vertxAgentOptions;
     private Disposable clusterSyncSubscription;
     private Counter restartCounter;
-    private AgentOptions.AgentRestartStrategy restartStrategy;
+    private AgentOptions.AgentRestartStrategy onErrorRestartStrategy;
+    private AgentOptions.AgentRestartStrategy onCompleteRestartStrategy;
 
     public VertxSupervisorAgent(VertxAgentSystem vertxAgentSystem, VertxAgentFactory agentFactory) {
         this.vertxAgentSystem = vertxAgentSystem;
@@ -82,7 +83,8 @@ public final class VertxSupervisorAgent extends AbstractVerticle {
                     agentOptions.getClass().getName());
         }
         this.vertxAgentOptions = (VertxAgentOptions) agentOptions;
-        this.restartStrategy = agentOptions.getAgentRestartStrategy();
+        this.onErrorRestartStrategy = agentOptions.getAgentRestartStrategy();
+        this.onCompleteRestartStrategy = agentOptions.getOnCompleteRestartStrategy();
     }
 
     private void handleDeployment(AsyncResult<String> deployment, Future<Void> future) {
@@ -165,8 +167,11 @@ public final class VertxSupervisorAgent extends AbstractVerticle {
             agentOptions.put(agent.name(), vertxAgentOptions.toJson().encode());
         } else {
             final VertxAgentOptions latestVertxAgentOptions = VertxAgentOptions.from(agentJson);
-            if (!latestVertxAgentOptions.getAgentRestartStrategy().equals(restartStrategy)) {
-                restartStrategy = latestVertxAgentOptions.getAgentRestartStrategy();
+            if (!latestVertxAgentOptions.getAgentRestartStrategy().equals(onErrorRestartStrategy)) {
+                onErrorRestartStrategy = latestVertxAgentOptions.getAgentRestartStrategy();
+            }
+            if (!latestVertxAgentOptions.getOnCompleteRestartStrategy().equals(onCompleteRestartStrategy)) {
+                onCompleteRestartStrategy = latestVertxAgentOptions.getOnCompleteRestartStrategy();
             }
             vertxAgentOptions = latestVertxAgentOptions;
         }
@@ -316,23 +321,33 @@ public final class VertxSupervisorAgent extends AbstractVerticle {
     private void handleChildError(Throwable error) {
         log.error("Error in child agent " + agent.name(), error);
         log.info("Restarting agent {}", agent.name());
-        log.info("Using [{}'s] restart strategy: {}", agent.name(), restartStrategy.getClass().getSimpleName());
-        boolean wasRestarted = restartStrategy.restart(() -> {
+        log.info("Using [{}'s] restart strategy: {}", agent.name(), onErrorRestartStrategy.getClass().getSimpleName());
+        boolean wasRestarted = restartAgent(onErrorRestartStrategy);
+        if (!wasRestarted) {
+            undeploy();
+        }
+    }
+
+    private boolean restartAgent(AgentOptions.AgentRestartStrategy restartStrategy) {
+        return restartStrategy.restart(() -> {
             synchronized (this) {
                 initAgent();
                 restartCounter.inc();
                 agent.start();
             }
         });
-        if (!wasRestarted) {
-            undeploy();
-        }
     }
 
     private void handleChildComplete() {
         log.info("Got child completed: {}", agent.name());
-        if (vertxAgentOptions.isUndeployOnComplete()) {
-            undeploy();
+        switch (vertxAgentOptions.getOnCompleteAction()) {
+            case undeploy:
+                undeploy();
+                break;
+            case restart:
+                log.info("Using [{}'s] on complete restart strategy: {}", agent.name(), onCompleteRestartStrategy.getClass().getSimpleName());
+                restartAgent(onCompleteRestartStrategy);
+                break;
         }
     }
 
