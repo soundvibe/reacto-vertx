@@ -4,6 +4,7 @@ import com.codahale.metrics.Counter;
 import io.reactivex.*;
 import io.reactivex.disposables.Disposable;
 import io.vertx.core.*;
+import io.vertx.core.Future;
 import io.vertx.core.eventbus.MessageConsumer;
 import io.vertx.core.shareddata.Lock;
 import io.vertx.core.spi.cluster.*;
@@ -14,7 +15,7 @@ import org.slf4j.*;
 
 import java.time.Instant;
 import java.util.*;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
@@ -43,6 +44,7 @@ public final class VertxSupervisorAgent extends AbstractVerticle {
     private Counter restartCounter;
     private AgentOptions.AgentRestartStrategy onErrorRestartStrategy;
     private AgentOptions.AgentRestartStrategy onCompleteRestartStrategy;
+    private static final ConcurrentMap<String, Boolean> idleSupervisors = new ConcurrentHashMap<>();
 
     public VertxSupervisorAgent(VertxAgentSystem vertxAgentSystem, VertxAgentFactory agentFactory) {
         this.vertxAgentSystem = vertxAgentSystem;
@@ -60,19 +62,31 @@ public final class VertxSupervisorAgent extends AbstractVerticle {
 
     @Override
     public void start(Future<Void> startFuture) {
-        final boolean shouldDeploy = vertxAgentSystem.clusterManager().map(clusterManager -> findRunningAgents(nodes, agent.name(), agent.version()))
-                .map(vertxAgents -> vertxAgents.size() < vertxAgentOptions.getDesiredNumberOfInstances())
-                .orElse(true);
+        try {
+            final boolean shouldDeploy = vertxAgentSystem.clusterManager()
+                    .map(clusterManager -> findRunningAgents(nodes, agent.name(), agent.version()))
+                    .map(vertxAgents -> vertxAgents.size() < vertxAgentOptions.getDesiredNumberOfInstances())
+                    .orElse(true);
 
-        if (!shouldDeploy) {
-            log.warn("There are already desired number of instances running in the cluster, skipping deployment for {}", agent.name());
-            startFuture.fail(new AgentIsInDesiredClusterState(agent.name(), vertxAgentOptions.getDesiredNumberOfInstances()));
-            return;
+            if (!shouldDeploy) {
+                log.warn("There are already desired number of instances running in the cluster, skipping deployment for {}", agent.name());
+                final Boolean result = idleSupervisors.putIfAbsent(agent.name(), true);
+                if (result == null || !result) {
+                    vertxAgentSystem.clusterManager()
+                            .ifPresent(this::listenForClusterChanges);
+                    startFuture.complete();
+                } else {
+                    startFuture.fail(new AgentIsInDesiredClusterState(agent.name(), vertxAgentOptions.getDesiredNumberOfInstances()));
+                }
+            } else {
+                vertx.deployVerticle(
+                        agent,
+                        vertxAgentOptions.toDeploymentOptions(),
+                        deployment -> handleDeployment(deployment, startFuture));
+            }
+        } catch (Throwable e) {
+            startFuture.fail(e);
         }
-        vertx.deployVerticle(
-                agent,
-                vertxAgentOptions.toDeploymentOptions(),
-                deployment -> handleDeployment(deployment, startFuture));
     }
 
     @Override
@@ -335,7 +349,17 @@ public final class VertxSupervisorAgent extends AbstractVerticle {
                         vertxAgentSystem.run(agentFactory)
                                 .doFinally(lock::release)
                                 .subscribe(
-                                        id -> log.info("New agent was redeployed successfully: {}", agent.name()),
+                                        id -> {
+                                            log.info("New agent was redeployed successfully: {}", agent.name());
+                                            if (deploymentId.get() == null) {
+                                                final String name = agent.name();
+                                                //no need for idle agent, undeploy itself
+                                                undeploy(deploymentID()).subscribe(
+                                                        () -> idleSupervisors.remove(name),
+                                                        e -> log.warn("Unable to undeploy not needed idle supervisor: ", e)
+                                                );
+                                            }
+                                        },
                                         error -> log.error("Unable to redeploy failed agent: " + agent.name(), error),
                                         () -> log.info("No need to redeploy new agent: {}", agent.name()));
                     } else {
@@ -358,7 +382,10 @@ public final class VertxSupervisorAgent extends AbstractVerticle {
         log.info("Using [{}'s] restart strategy: {}", agent.name(), onErrorRestartStrategy.getClass().getSimpleName());
         boolean wasRestarted = restartAgent(onErrorRestartStrategy);
         if (!wasRestarted) {
-            undeploy();
+            undeploy().subscribe(
+                    () -> log.info("Undeployed successfully on child error: ", error),
+                    e -> log.warn("Unable to undeploy on child error: ", e)
+            );
         }
     }
 
@@ -376,7 +403,10 @@ public final class VertxSupervisorAgent extends AbstractVerticle {
         log.info("Got child completed: {}", agent.name());
         switch (vertxAgentOptions.getOnCompleteAction()) {
             case undeploy:
-                undeploy();
+                undeploy().subscribe(
+                        () -> log.info("Undeployed successfully on child complete"),
+                        e -> log.warn("Unable to undeploy on child complete: ", e)
+                );
                 break;
             case restart:
                 log.info("Using [{}'s] on complete restart strategy: {}", agent.name(), onCompleteRestartStrategy.getClass().getSimpleName());
@@ -385,15 +415,21 @@ public final class VertxSupervisorAgent extends AbstractVerticle {
         }
     }
 
-    private void undeploy() {
-        final String supervisorDeploymentId = vertxAgent.supervisorDeploymentId;
-        vertx.undeploy(supervisorDeploymentId, handler -> {
+    private Completable undeploy(String supervisorDeploymentId) {
+        return Completable.create(emitter -> vertx.undeploy(supervisorDeploymentId, handler -> {
             if (handler.succeeded()) {
                 log.info("Undeployed agent and it's supervisor {}", agent.name());
                 removeFromHA(supervisorDeploymentId);
+                emitter.onComplete();
             } else {
                 log.error("Unable to undeploy " + agent.name(), handler.cause());
+                emitter.onError(handler.cause());
             }
-        });
+        }));
+    }
+
+    private Completable undeploy() {
+        if (vertxAgent == null) return Completable.complete();
+        return undeploy(vertxAgent.supervisorDeploymentId);
     }
 }
