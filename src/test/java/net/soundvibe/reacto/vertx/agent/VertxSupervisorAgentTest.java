@@ -14,6 +14,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.Assert.assertEquals;
 
+@SuppressWarnings("ResultOfMethodCallIgnored")
 public class VertxSupervisorAgentTest {
 
     private final Vertx vertx = Vertx.vertx();
@@ -23,7 +24,7 @@ public class VertxSupervisorAgentTest {
     public void shouldRestartOnErrorAndSelfHeal() throws InterruptedException {
         final CountDownLatch countDownLatch = new CountDownLatch(1);
         final TestAgentVerticle testAgent = new TestAgentVerticle(countDownLatch, AlwaysRestart.INSTANCE);
-        vertxAgentSystem.run(() -> testAgent).blockingAwait();
+        vertxAgentSystem.run(() -> testAgent).blockingGet();
         countDownLatch.await(5, TimeUnit.SECONDS);
 
         assertEquals(1, testAgent.events.size());
@@ -33,7 +34,7 @@ public class VertxSupervisorAgentTest {
     public void shouldNotRestartOnErrorWhenNeverRestartStrategy() throws InterruptedException {
         final CountDownLatch countDownLatch = new CountDownLatch(1);
         final TestAgentVerticle testAgent = new TestAgentVerticle(countDownLatch, NeverRestart.INSTANCE);
-        vertxAgentSystem.run(() -> testAgent).blockingAwait();
+        vertxAgentSystem.run(() -> testAgent).blockingGet();
         countDownLatch.await(5, TimeUnit.SECONDS);
 
         assertEquals(0, testAgent.events.size());

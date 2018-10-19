@@ -14,6 +14,7 @@ import static io.vertx.core.logging.LoggerFactory.LOGGER_DELEGATE_FACTORY_CLASS_
 import static net.soundvibe.reacto.vertx.agent.VertxSupervisorAgent.findRunningAgents;
 import static org.junit.Assert.assertEquals;
 
+@SuppressWarnings("ResultOfMethodCallIgnored")
 public class ClusteredVertxSupervisorAgentTest {
 
     private ClusterManager clusterManager;
@@ -48,8 +49,8 @@ public class ClusteredVertxSupervisorAgentTest {
 
     @Test
     public void shouldRedeployOnOtherInstanceAfterFailure() throws InterruptedException {
-        agentSystem1.run(TestAgentVerticle::new).blockingAwait();
-        agentSystem2.run(TestAgentVerticle::new).blockingAwait();
+        agentSystem1.run(TestAgentVerticle::new).blockingGet();
+        agentSystem2.run(TestAgentVerticle::new).blockingGet();
 
         final Map<String, String> agents = clusterManager.getSyncMap(VertxSupervisorAgent.MAP_NODES);
         final List<VertxAgent> runningAgents = findRunningAgents(agents, TestAgentVerticle.class.getSimpleName(), 1);
@@ -68,22 +69,22 @@ public class ClusteredVertxSupervisorAgentTest {
         final Map<String, String> agents = clusterManager.getSyncMap(VertxSupervisorAgent.MAP_NODES);
         assertEquals("Should be 0 instances up", 0, findRunningAgents(agents, TestAgentVerticle.class.getSimpleName(), 1).size());
 
-        agentSystem1.run(() -> new TestAgentVerticle(2, 2, 1)).blockingAwait();
+        agentSystem1.run(() -> new TestAgentVerticle(2, 2, 1)).blockingGet();
 
         final List<VertxAgent> runningAgents = findRunningAgents(agents, TestAgentVerticle.class.getSimpleName(), 1);
         assertEquals("Should be 1 instance up",1, runningAgents.size());
 
-        agentSystem2.run(() -> new TestAgentVerticle(1, 2, 1)).blockingAwait();
+        agentSystem2.run(() -> new TestAgentVerticle(1, 2, 1)).blockingGet();
         final List<VertxAgent> runningAgents2 = findRunningAgents(agents, TestAgentVerticle.class.getSimpleName(), 1);
-        assertEquals("Should be 2 instances up",2, runningAgents2.size());
+        assertEquals("Should be 1 instance up because we already have deployed one instance",1, runningAgents2.size());
 
-        agentSystem1.run(() -> new TestAgentVerticle(2, 2, 2)).blockingAwait();
+        agentSystem1.run(() -> new TestAgentVerticle(2, 2, 2)).blockingGet();
 
         //wait for redeploy to happen
         final List<VertxAgent> runningAgentsNewVersion = findRunningAgents(agents, TestAgentVerticle.class.getSimpleName(), 2);
         assertEquals("Should be 1 new version instance after deployment",1, runningAgentsNewVersion.size());
         final List<VertxAgent> runningAgentsOldVersion = findRunningAgents(agents, TestAgentVerticle.class.getSimpleName(), 1);
-        assertEquals("Should be 2 old version instance running",2, runningAgentsOldVersion.size());
+        assertEquals("Should be 1 old version instance running",1, runningAgentsOldVersion.size());
     }
 
     private static VertxOptions vertxOptions() {

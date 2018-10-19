@@ -2,12 +2,12 @@ package net.soundvibe.reacto.vertx.agent;
 
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import io.reactivex.Completable;
+import io.reactivex.*;
 import io.vertx.core.*;
 import io.vertx.core.impl.VertxInternal;
 import io.vertx.core.json.Json;
 import io.vertx.core.spi.cluster.ClusterManager;
-import net.soundvibe.reacto.agent.AgentSystem;
+import net.soundvibe.reacto.agent.*;
 import org.slf4j.*;
 
 import java.time.Duration;
@@ -74,11 +74,9 @@ public final class VertxAgentSystem implements AgentSystem<VertxAgentFactory>, i
     }
 
     @Override
-    public Completable run(VertxAgentFactory agentFactory) {
-        return Completable.create(emitter -> {
+    public Maybe<String> run(VertxAgentFactory agentFactory) {
+        return Maybe.create(emitter -> {
             final String uuid = UUID.randomUUID().toString();
-            //todo deploy only if cluster instance size is less than actual size
-
             final VertxSupervisorAgent supervisorAgent = new VertxSupervisorAgent(this, agentFactory);
             vertx.deployVerticle(supervisorAgent,
                     new DeploymentOptions()
@@ -90,10 +88,15 @@ public final class VertxAgentSystem implements AgentSystem<VertxAgentFactory>, i
                     handler -> {
                         if (handler.succeeded()) {
                             log.info("Supervisor deployed for {}. ID: {}", uuid, handler.result());
-                            emitter.onComplete();
+                            emitter.onSuccess(handler.result());
                         } else if (handler.failed()) {
-                            log.error("Unable to deploy agent: " + uuid, handler.cause());
-                            emitter.onError(handler.cause());
+                            final Throwable cause = handler.cause();
+                            if (cause instanceof AgentIsInDesiredClusterState) {
+                                emitter.onComplete();
+                            } else {
+                                log.error("Unable to deploy agent: " + uuid, cause);
+                                emitter.onError(cause);
+                            }
                         }
                     });
         });
