@@ -3,6 +3,7 @@ package net.soundvibe.reacto.vertx.agent;
 import com.codahale.metrics.Counter;
 import io.reactivex.*;
 import io.reactivex.disposables.Disposable;
+import io.reactivex.schedulers.Schedulers;
 import io.vertx.core.*;
 import io.vertx.core.Future;
 import io.vertx.core.eventbus.MessageConsumer;
@@ -96,6 +97,14 @@ public final class VertxSupervisorAgent extends AbstractVerticle {
         stopFuture.complete();
     }
 
+    public Optional<String> agentDeploymentId() {
+        return Optional.ofNullable(deploymentId.get());
+    }
+
+    public Optional<AgentVerticle<?>> agentVerticle() {
+        return Optional.ofNullable(agent);
+    }
+
     private void initAgent() {
         this.agent = agentFactory.create();
         this.agent.assign(this::handleChildError, this::handleChildComplete);
@@ -165,23 +174,28 @@ public final class VertxSupervisorAgent extends AbstractVerticle {
         }
     }
 
-    private void removeFromHA(String supervisorDeploymentId) {
+    private void removeFromHA(String deploymentId, DeploymentIdType deploymentIdType) {
         synchronized (lock) {
             if (vertxAgent == null || nodes == null) return;
             final String nodeJson = nodes.get(vertxAgent.nodeId);
             if (nodeJson != null) {
                 final VertxNode vertxNode = VertxNode.fromJson(nodeJson);
-                vertxNode.agents
-                        .removeIf(a -> a.supervisorDeploymentId.equals(supervisorDeploymentId));
-                nodes.put(vertxAgent.nodeId, vertxNode.encode());
+                if (vertxNode.agents.removeIf(a -> deploymentIdType == DeploymentIdType.SUPERVISOR ?
+                        a.supervisorDeploymentId.equals(deploymentId) :
+                        a.agentDeploymentId.equals(deploymentId))) {
+                    nodes.put(vertxAgent.nodeId, vertxNode.encode());
+                }
             }
         }
     }
 
+    @SuppressWarnings("RedundantCollectionOperation")
     private void removeNodeFromHA(String nodeId) {
         synchronized (lock) {
             try {
-                nodes.remove(nodeId);
+                if (nodes.containsKey(nodeId)) {
+                    nodes.remove(nodeId);
+                }
             } catch (Throwable e) {
                 log.warn("Cannot remove node from HA: ", e);
             }
@@ -248,21 +262,21 @@ public final class VertxSupervisorAgent extends AbstractVerticle {
         });
     }
 
-    private void checkForMissingAgents(ClusterManager clusterManager) {
+    void checkForMissingAgents(ClusterManager clusterManager) {
         if (isClusterSyncRunning()) return;
 
-        clusterSyncSubscription = Flowable.interval(0, 10, TimeUnit.SECONDS)
+        clusterSyncSubscription = Flowable.interval(0, 1, TimeUnit.MINUTES)
                 .map(i -> findRunningAgents(nodes, agent.name(), agent.version()))
                 .doOnNext(runningAgents -> syncDeploymentOptions())
                 .takeWhile(runningAgents -> canBeDeployedLocally(runningAgents, clusterManager.getNodeID()))
                 .subscribe(
                         runningAgents -> {
-                            log.info("There are less nodes [{}] than desired [{}], will try to redeploy agent: {}",
-                                    runningAgents.size(), vertxAgentOptions.getDesiredNumberOfInstances(), agent.name());
-                            redeployAgentIfNeeded(runningAgents, clusterManager);
+                            log.info("There are less nodes [{}] than desired [{}], will try to redeploy agent: {}:{}",
+                                    runningAgents.size(), vertxAgentOptions.getDesiredNumberOfInstances(), agent.name(), agent.version());
+                            deployAgent(clusterManager);
                         },
                         error -> log.error("Error when trying to set desired cluster state: ", error),
-                        () -> log.info("Cluster agent [{}] is in it's desired state", agent.name())
+                        () -> log.info("Cluster agent [{}: {}] is in it's desired state", agent.name(), agent.version())
                 );
     }
 
@@ -304,25 +318,7 @@ public final class VertxSupervisorAgent extends AbstractVerticle {
                 .max(comparing(List::size))
                 .map(this::chooseAgent)
                 .filter(ag -> isThisNode(ag, clusterManager))
-                .ifPresent(toUnDeploy -> clusterManager.getLockWithTimeout(LOCK_REACTO_SUPERVISOR + agent.name(), 2000L, handler -> {
-                    if (handler.succeeded()) {
-                        final Lock lock = handler.result();
-                        log.info("Lock acquired successfully: {}", LOCK_REACTO_SUPERVISOR + agent.name());
-                        if (findRunningAgents(nodes, agent.name(), agent.version())
-                                .size() > vertxAgentOptions.getDesiredNumberOfInstances()) {
-                            log.info("Starting to undeploy excessive agent: {}", agent.name());
-                            vertx.undeploy(toUnDeploy.supervisorDeploymentId, undeploy -> {
-                                if (undeploy.succeeded()) {
-                                    log.info("Excessive agent undeployed successfully: {}", toUnDeploy);
-                                    removeFromHA(toUnDeploy.supervisorDeploymentId);
-                                }
-                                lock.release();
-                            });
-                        }
-                    } else {
-                        log.warn("Unable to acquire lock", handler.cause());
-                    }
-                }));
+                .ifPresent(toUnDeploy -> undeployAgent(clusterManager, toUnDeploy));
     }
 
     private boolean isThisNode(VertxAgent vertxAgent, ClusterManager clusterManager) {
@@ -335,45 +331,84 @@ public final class VertxSupervisorAgent extends AbstractVerticle {
                 .orElseThrow(() -> new NoSuchElementException("No agents to choose from!"));
     }
 
-    private void redeployAgentIfNeeded(List<VertxAgent> runningAgents, ClusterManager clusterManager) {
-        runningAgents.stream()
-                .collect(groupingBy(ag -> ag.nodeId))
-                .values().stream()
-                .min(comparing(List::size))
-                .flatMap(vertxAgents -> vertxAgents.stream()
-                        .filter(vertxAgent -> vertxAgent.nodeId.equals(clusterManager.getNodeID()))
-                        .findAny())
-                .ifPresent(toDeploy ->  clusterManager.getLockWithTimeout(LOCK_REACTO_SUPERVISOR + agent.name(), 2000L, locker -> {
-                    if (locker.succeeded()) {
-                        final Lock lock = locker.result();
-                        vertxAgentSystem.run(agentFactory)
-                                .doFinally(lock::release)
-                                .subscribe(
-                                        id -> {
-                                            log.info("New agent was redeployed successfully: {}", agent.name());
-                                            if (deploymentId.get() == null) {
-                                                final String name = agent.name();
-                                                //no need for idle agent, undeploy itself
-                                                undeploy(deploymentID()).subscribe(
+    private void deployAgent(ClusterManager clusterManager) {
+        clusterManager.getLockWithTimeout(LOCK_REACTO_SUPERVISOR + agent.name(), 2000L, locker -> {
+            if (locker.succeeded()) {
+                final Lock lock = locker.result();
+                vertxAgentSystem.run(agentFactory)
+                        .subscribeOn(Schedulers.io())
+                        .observeOn(Schedulers.io())
+                        .doFinally(lock::release)
+                        .subscribe(
+                                id -> {
+                                    log.info("New agent was redeployed successfully: {}", agent.name());
+                                    if (deploymentId.get() == null) {
+                                        final String name = agent.name();
+                                        //no need for idle agent, undeploy itself
+                                        undeploy(deploymentID(), DeploymentIdType.SUPERVISOR)
+                                                .subscribe(
                                                         () -> idleSupervisors.remove(name),
                                                         e -> log.warn("Unable to undeploy not needed idle supervisor: ", e)
-                                                );
-                                            }
-                                        },
-                                        error -> log.error("Unable to redeploy failed agent: " + agent.name(), error),
-                                        () -> log.info("No need to redeploy new agent: {}", agent.name()));
-                    } else {
-                        log.warn("Unable to obtain lock", locker.cause());
-                    }
-                }));
+                                        );
+                                    }
+                                },
+                                error -> log.error("Unable to redeploy failed agent: " + agent.name(), error),
+                                () -> log.info("No need to redeploy new agent: {}", agent.name()));
+            } else {
+                log.warn("Unable to obtain lock", locker.cause());
+            }
+        });
+    }
+
+    enum  DeploymentIdType {
+        SUPERVISOR, AGENT
+    }
+
+    private void undeployAgent(ClusterManager clusterManager, VertxAgent toUnDeploy) {
+        clusterManager.getLockWithTimeout(LOCK_REACTO_SUPERVISOR + agent.name(), 2000L, handler -> {
+            if (handler.succeeded()) {
+                final Lock lock = handler.result();
+                log.info("Lock acquired successfully: {}", LOCK_REACTO_SUPERVISOR + agent.name());
+                final List<VertxAgent> runningAgents = findRunningAgents(nodes, agent.name(), agent.version());
+                if (runningAgents.size() > vertxAgentOptions.getDesiredNumberOfInstances()) {
+                    log.info("Starting to undeploy excessive agent: {}", agent.name());
+                    final long localAgentCount = runningAgents.stream()
+                            .filter(ag -> ag.nodeId.equals(clusterManager.getNodeID()))
+                            .count();
+                    String unDeploymentId = localAgentCount < 2 ?
+                            toUnDeploy.agentDeploymentId :
+                            toUnDeploy.supervisorDeploymentId;
+
+                    DeploymentIdType deploymentIdType = localAgentCount < 2 ?
+                            DeploymentIdType.AGENT :
+                            DeploymentIdType.SUPERVISOR;
+
+                    undeploy(unDeploymentId, deploymentIdType)
+                            .subscribeOn(Schedulers.io())
+                            .observeOn(Schedulers.io())
+                            .doFinally(lock::release)
+                            .subscribe(
+                                    () -> log.info("Excessive agent undeployed successfully: {}", toUnDeploy),
+                                    e -> log.warn("Error on excessive agent undeployment: ", e)
+                            );
+                }
+            } else {
+                log.warn("Unable to acquire lock", handler.cause());
+            }
+        });
     }
 
     public static List<VertxAgent> findRunningAgents(Map<String, String> nodes, String agentName, int version) {
-        return nodes.values().stream()
-                .map(VertxNode::fromJson)
-                .flatMap(vertxNode -> vertxNode.agents.stream())
-                .filter(a -> a.name.equals(agentName) && a.version == version)
-                .collect(Collectors.toList());
+        try {
+            return nodes.values().stream()
+                    .map(VertxNode::fromJson)
+                    .flatMap(vertxNode -> vertxNode.agents.stream())
+                    .filter(a -> a.name.equals(agentName) && a.version == version)
+                    .collect(Collectors.toList());
+        } catch (Throwable e) {
+            log.warn("No running agents found: ", e);
+            return Collections.emptyList();
+        }
     }
 
     private void handleChildError(Throwable error) {
@@ -382,7 +417,10 @@ public final class VertxSupervisorAgent extends AbstractVerticle {
         log.info("Using [{}'s] restart strategy: {}", agent.name(), onErrorRestartStrategy.getClass().getSimpleName());
         boolean wasRestarted = restartAgent(onErrorRestartStrategy);
         if (!wasRestarted) {
-            undeploy().subscribe(
+            undeploy()
+                .subscribeOn(Schedulers.io())
+                .observeOn(Schedulers.io())
+                .subscribe(
                     () -> log.info("Undeployed successfully on child error: ", error),
                     e -> log.warn("Unable to undeploy on child error: ", e)
             );
@@ -403,7 +441,10 @@ public final class VertxSupervisorAgent extends AbstractVerticle {
         log.info("Got child completed: {}", agent.name());
         switch (vertxAgentOptions.getOnCompleteAction()) {
             case undeploy:
-                undeploy().subscribe(
+                undeploy()
+                    .subscribeOn(Schedulers.io())
+                    .observeOn(Schedulers.io())
+                    .subscribe(
                         () -> log.info("Undeployed successfully on child complete"),
                         e -> log.warn("Unable to undeploy on child complete: ", e)
                 );
@@ -415,11 +456,11 @@ public final class VertxSupervisorAgent extends AbstractVerticle {
         }
     }
 
-    private Completable undeploy(String supervisorDeploymentId) {
-        return Completable.create(emitter -> vertx.undeploy(supervisorDeploymentId, handler -> {
+    private Completable undeploy(String deploymentId, DeploymentIdType deploymentIdType) {
+        return Completable.create(emitter -> vertx.undeploy(deploymentId, handler -> {
             if (handler.succeeded()) {
-                log.info("Undeployed agent and it's supervisor {}", agent.name());
-                removeFromHA(supervisorDeploymentId);
+                log.info("Undeployed {}: {}", deploymentIdType, agent.name());
+                removeFromHA(deploymentId, deploymentIdType);
                 emitter.onComplete();
             } else {
                 log.error("Unable to undeploy " + agent.name(), handler.cause());
@@ -430,6 +471,6 @@ public final class VertxSupervisorAgent extends AbstractVerticle {
 
     private Completable undeploy() {
         if (vertxAgent == null) return Completable.complete();
-        return undeploy(vertxAgent.supervisorDeploymentId);
+        return undeploy(vertxAgent.supervisorDeploymentId, DeploymentIdType.SUPERVISOR);
     }
 }

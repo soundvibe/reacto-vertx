@@ -3,6 +3,8 @@ package net.soundvibe.reacto.vertx.agent;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import io.reactivex.*;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.schedulers.Schedulers;
 import io.vertx.core.*;
 import io.vertx.core.impl.VertxInternal;
 import io.vertx.core.json.Json;
@@ -14,14 +16,18 @@ import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.*;
 
 public final class VertxAgentSystem implements AgentSystem<VertxAgentFactory>, io.vertx.core.Closeable {
 
     private static final Logger log = LoggerFactory.getLogger(VertxAgentSystem.class);
     private static final String GROUP_DEFAULT = VertxOptions.DEFAULT_HA_GROUP;
 
+    private final ConcurrentMap<String, VertxSupervisorAgent> deployedSupervisors = new ConcurrentHashMap<>();
+
     public final Vertx vertx;
     public final String group;
+    private final AtomicReference<Disposable> syncRef = new AtomicReference<>();
 
     private VertxAgentSystem(Vertx vertx, String group) {
         this.vertx = vertx;
@@ -88,10 +94,13 @@ public final class VertxAgentSystem implements AgentSystem<VertxAgentFactory>, i
                     handler -> {
                         if (handler.succeeded()) {
                             log.info("Supervisor deployed for {}. ID: {}", uuid, handler.result());
+                            deployedSupervisors.put(handler.result(), supervisorAgent);
+                            initSyncIfNeeded();
                             emitter.onSuccess(handler.result());
                         } else if (handler.failed()) {
                             final Throwable cause = handler.cause();
                             if (cause instanceof AgentIsInDesiredClusterState) {
+                                initSyncIfNeeded();
                                 emitter.onComplete();
                             } else {
                                 log.error("Unable to deploy agent: " + uuid, cause);
@@ -100,6 +109,22 @@ public final class VertxAgentSystem implements AgentSystem<VertxAgentFactory>, i
                         }
                     });
         });
+    }
+
+    public int deployedSupervisorsCount() {
+        return deployedSupervisors.size();
+    }
+
+    public List<VertxSupervisorAgent> deployedSupervisors() {
+        return new ArrayList<>(deployedSupervisors.values());
+    }
+
+    public List<AgentVerticle<?>> deployedAgents() {
+        return deployedSupervisors.values().stream()
+                .flatMap(vertxSupervisorAgent -> vertxSupervisorAgent.agentDeploymentId()
+                        .map(t -> vertxSupervisorAgent.agentVerticle().map(Stream::of).orElse(Stream.empty()))
+                        .orElse(Stream.empty()))
+                .collect(Collectors.toList());
     }
 
     public Optional<ClusterManager> clusterManager() {
@@ -113,17 +138,48 @@ public final class VertxAgentSystem implements AgentSystem<VertxAgentFactory>, i
 
     @Override
     public void close() {
+        closeSync();
         CountDownLatch countDownLatch = new CountDownLatch(1);
         vertx.close(handler -> countDownLatch.countDown());
         try {
-            countDownLatch.await(5, TimeUnit.SECONDS);
+            countDownLatch.await(10, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
-            throw new RuntimeException(e);
+            log.warn("Unable to close agent system gracefully: ", e);
         }
     }
 
     @Override
     public void close(Handler<AsyncResult<Void>> completionHandler) {
+        closeSync();
         vertx.close(completionHandler);
+    }
+
+    private synchronized void initSyncIfNeeded() {
+        if (!clusterManager().isPresent()) return;
+        final ClusterManager clusterManager = clusterManager().get();
+        final Disposable disposable = syncRef.get();
+        if (disposable == null || disposable.isDisposed()) {
+            final Disposable subscription = Flowable.interval(1, 1, TimeUnit.MINUTES, Schedulers.io())
+                    .flatMapIterable(i -> deployedSupervisors())
+                    .subscribe(
+                            vertxSupervisorAgent -> {
+                                try {
+                                    vertxSupervisorAgent.checkForMissingAgents(clusterManager);
+                                } catch (Throwable e) {
+                                    log.warn("CheckForMissingAgents threw an error: ", e);
+                                }
+                            },
+                            e -> log.error("Agent System sync failed:", e),
+                            () -> log.info("Agent System sync completed")
+                    );
+            syncRef.set(subscription);
+        }
+    }
+
+    private synchronized void closeSync() {
+        final Disposable disposable = syncRef.get();
+        if (disposable != null) {
+            disposable.dispose();
+        }
     }
 }
