@@ -4,7 +4,6 @@ import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import io.reactivex.*;
 import io.reactivex.disposables.Disposable;
-import io.reactivex.schedulers.Schedulers;
 import io.vertx.core.*;
 import io.vertx.core.impl.VertxInternal;
 import io.vertx.core.json.Json;
@@ -159,7 +158,7 @@ public final class VertxAgentSystem implements AgentSystem<VertxAgentFactory>, i
         final ClusterManager clusterManager = clusterManager().get();
         final Disposable disposable = syncRef.get();
         if (disposable == null || disposable.isDisposed()) {
-            final Disposable subscription = Flowable.interval(1, 1, TimeUnit.MINUTES, Schedulers.io())
+            final Disposable subscription = Flowable.interval(1, 1, TimeUnit.MINUTES)
                     .flatMapIterable(i -> deployedSupervisors())
                     .subscribe(
                             vertxSupervisorAgent -> {
@@ -174,6 +173,10 @@ public final class VertxAgentSystem implements AgentSystem<VertxAgentFactory>, i
                     );
             syncRef.set(subscription);
         }
+    }
+
+    void removeSupervisor(String deploymentId) {
+        deployedSupervisors.remove(deploymentId);
     }
 
     private synchronized void closeSync() {

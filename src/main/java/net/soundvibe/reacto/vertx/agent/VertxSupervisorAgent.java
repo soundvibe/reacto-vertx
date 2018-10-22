@@ -461,6 +461,9 @@ public final class VertxSupervisorAgent extends AbstractVerticle {
             if (handler.succeeded()) {
                 log.info("Undeployed {}: {}", deploymentIdType, agent.name());
                 removeFromHA(deploymentId, deploymentIdType);
+                if (deploymentIdType == DeploymentIdType.SUPERVISOR) {
+                    vertxAgentSystem.removeSupervisor(deploymentId);
+                }
                 emitter.onComplete();
             } else {
                 log.error("Unable to undeploy " + agent.name(), handler.cause());
