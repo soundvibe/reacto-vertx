@@ -276,7 +276,7 @@ public final class VertxSupervisorAgent extends AbstractVerticle {
                             deployAgent(clusterManager);
                         },
                         error -> log.error("Error when trying to set desired cluster state: ", error),
-                        () -> log.info("Cluster agent [{}: {}] is in it's desired state", agent.name(), agent.version())
+                        () -> log.debug("Cluster agent [{}: {}] is in it's desired state", agent.name(), agent.version())
                 );
     }
 
@@ -307,7 +307,7 @@ public final class VertxSupervisorAgent extends AbstractVerticle {
                             undeployAgentIfNeeded(runningAgents, clusterManager);
                         },
                         error -> log.error("Error when trying to set excessive cluster state: ", error),
-                        () -> log.info("Cluster agent [{}] is in it's desired state", this.agent.name())
+                        () -> log.debug("Cluster agent [{}] is in it's desired state", this.agent.name())
                 );
     }
 

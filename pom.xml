@@ -36,9 +36,9 @@
     <properties>
         <java.version>1.8</java.version>
         <reacto.version>2.1.0-SNAPSHOT</reacto.version>
-        <jackson.version>2.9.6</jackson.version>
+        <jackson.version>2.9.7</jackson.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <vertx.version>3.5.3</vertx.version>
+        <vertx.version>3.5.4</vertx.version>
     </properties>
 
     <distributionManagement>
@@ -139,7 +139,7 @@
                         <id>attach-sources</id>
                         <phase>verify</phase>
                         <goals>
-                            <goal>jar-no-fork</goal>
+                            <goal>jar</goal>
                         </goals>
                     </execution>
                 </executions>
