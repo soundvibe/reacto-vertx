@@ -453,7 +453,7 @@ public class MainSuite {
                 });
 
         countDownLatch.await(1000L, TimeUnit.MILLISECONDS);
-        assertEquals(WebSocketHandshakeException.class, ex.get().getClass());
+        assertEquals(WebsocketRejectedException.class, ex.get().getClass());
     }
 
     private Flowable<String> get(int port, String host, String uri) {
