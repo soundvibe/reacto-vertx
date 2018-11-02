@@ -1,4 +1,6 @@
 # Change Log
+## [v2.1.0](https://github.com/soundvibe/reacto-vertx/tree/v2.1.0) (2018-11-02)
+- Implemented Supervised Agent Verticles
 
 ## [v2.0.0](https://github.com/soundvibe/reacto-vertx/tree/v2.0.0) (2017-08-25)
 [Full Changelog](https://github.com/soundvibe/reacto-vertx/compare/v1.0.5...v2.0.0)
