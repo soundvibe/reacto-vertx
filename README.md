@@ -10,3 +10,4 @@
 * Service Registry using different back-ends
 * Command Handler through WebSockets
 * SSE handler
+* Supervised Agent Verticle
