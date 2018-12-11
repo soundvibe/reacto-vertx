@@ -10,6 +10,7 @@ public final class VertxAgentOptions extends AgentOptions {
 
     private static final String KEY_REACTO_CONFIG = "__reactoConfig__";
     private static final String KEY_CLUSTER_INSTANCES = "clusterInstances";
+    private static final String KEY_NODE_MAX_INSTANCES = "nodeMaxInstances";
     private final DeploymentOptions deploymentOptions;
 
     private VertxAgentOptions(DeploymentOptions deploymentOptions) {
@@ -22,7 +23,9 @@ public final class VertxAgentOptions extends AgentOptions {
         Optional.ofNullable(deploymentOptions.getConfig())
                 .map(config -> config.getJsonObject(KEY_REACTO_CONFIG))
                 .ifPresent(reactoConfig -> vertxAgentOptions
-                        .setClusterInstances(reactoConfig.getInteger(KEY_CLUSTER_INSTANCES, 1)));
+                        .setClusterInstances(reactoConfig.getInteger(KEY_CLUSTER_INSTANCES, 1))
+                        .setMaxInstancesOnNode(reactoConfig.getInteger(KEY_NODE_MAX_INSTANCES, 4))
+                );
 
         return vertxAgentOptions;
     }
@@ -64,6 +67,7 @@ public final class VertxAgentOptions extends AgentOptions {
 
         config.put(KEY_REACTO_CONFIG, new JsonObject()
                 .put(KEY_CLUSTER_INSTANCES, getClusterInstances())
+                .put(KEY_NODE_MAX_INSTANCES, getMaxInstancesOnNode())
         );
 
         options.setConfig(config);
