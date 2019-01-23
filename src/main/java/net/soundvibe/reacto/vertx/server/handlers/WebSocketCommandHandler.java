@@ -2,6 +2,7 @@ package net.soundvibe.reacto.vertx.server.handlers;
 
 import io.reactivex.*;
 import io.reactivex.disposables.Disposable;
+import io.reactivex.internal.functions.Functions;
 import io.vertx.core.Handler;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.ServerWebSocket;
@@ -50,7 +51,7 @@ public class WebSocketCommandHandler implements Handler<ServerWebSocket> {
                         .flatMap(command -> commandProcessor.process(command)
                                 .materialize()
                                 .doOnNext(eventNotification -> writeEventNotification(eventNotification, command, serverWebSocket))
-                                .dematerialize()
+                                .dematerialize(Functions.identity())
                         )
                         .subscribe(
                                 event -> logDebug(() -> "Event was processed: " + event),

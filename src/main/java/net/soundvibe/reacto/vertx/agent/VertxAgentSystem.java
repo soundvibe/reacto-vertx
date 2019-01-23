@@ -4,6 +4,7 @@ import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import io.reactivex.*;
 import io.reactivex.disposables.Disposable;
+import io.reactivex.schedulers.Schedulers;
 import io.vertx.core.*;
 import io.vertx.core.impl.VertxInternal;
 import io.vertx.core.json.Json;
@@ -86,8 +87,6 @@ public final class VertxAgentSystem implements AgentSystem<VertxAgentFactory>, i
             vertx.deployVerticle(supervisorAgent,
                     new DeploymentOptions()
                             .setWorker(true)
-                            .setWorkerPoolName(uuid + "-pool")
-                            .setWorkerPoolSize(1)
                             .setInstances(1)
                             .setHa(true),
                     handler -> {
@@ -99,6 +98,7 @@ public final class VertxAgentSystem implements AgentSystem<VertxAgentFactory>, i
                         } else if (handler.failed()) {
                             final Throwable cause = handler.cause();
                             if (cause instanceof AgentIsInDesiredClusterState) {
+                                log.warn("Agent is is desired cluster state, init sync if needed...");
                                 initSyncIfNeeded();
                                 emitter.onComplete();
                             } else {
@@ -158,7 +158,7 @@ public final class VertxAgentSystem implements AgentSystem<VertxAgentFactory>, i
         final ClusterManager clusterManager = clusterManager().get();
         final Disposable disposable = syncRef.get();
         if (disposable == null || disposable.isDisposed()) {
-            final Disposable subscription = Flowable.interval(1, 1, TimeUnit.MINUTES)
+            final Disposable subscription = Flowable.interval(1, 1, TimeUnit.MINUTES, Schedulers.io())
                     .flatMapIterable(i -> deployedSupervisors())
                     .subscribe(
                             vertxSupervisorAgent -> {
