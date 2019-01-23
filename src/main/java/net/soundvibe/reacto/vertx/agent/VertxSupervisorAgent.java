@@ -66,7 +66,10 @@ public final class VertxSupervisorAgent extends AbstractVerticle {
         try {
             final boolean shouldDeploy = vertxAgentSystem.clusterManager()
                     .map(clusterManager -> findRunningAgents(nodes, agent.name(), agent.version()))
-                    .map(vertxAgents -> vertxAgents.size() < vertxAgentOptions.getDesiredNumberOfInstances())
+                    .map(vertxAgents -> (vertxAgents.size() < vertxAgentOptions.getDesiredNumberOfInstances()) &&
+                            (vertxAgentOptions.getMaxInstancesOnNode() > vertxAgents.stream()
+                                    .filter(a -> isThisNode(a, vertxAgentSystem.clusterManager().orElseThrow(() -> new IllegalStateException("Cluster manager is not used"))))
+                                    .count()))
                     .orElse(true);
 
             if (!shouldDeploy) {
@@ -264,7 +267,7 @@ public final class VertxSupervisorAgent extends AbstractVerticle {
 
     void checkForMissingAgents(ClusterManager clusterManager) {
         if (isClusterSyncRunning()) return;
-
+        log.debug("Checking for missing agents...");
         clusterSyncSubscription = Flowable.interval(0, 1, TimeUnit.MINUTES)
                 .map(i -> findRunningAgents(nodes, agent.name(), agent.version()))
                 .doOnNext(runningAgents -> syncDeploymentOptions())
@@ -338,22 +341,31 @@ public final class VertxSupervisorAgent extends AbstractVerticle {
                 vertxAgentSystem.run(agentFactory)
                         .subscribeOn(Schedulers.io())
                         .observeOn(Schedulers.io())
-                        .doFinally(lock::release)
+                        .doOnDispose(() -> release(lock))
                         .subscribe(
                                 id -> {
                                     log.info("New agent was redeployed successfully: {}", agent.name());
                                     if (deploymentId.get() == null) {
                                         final String name = agent.name();
-                                        //no need for idle agent, undeploy itself
-                                        undeploy(deploymentID(), DeploymentIdType.SUPERVISOR)
-                                                .subscribe(
-                                                        () -> idleSupervisors.remove(name),
-                                                        e -> log.warn("Unable to undeploy not needed idle supervisor: ", e)
-                                        );
+                                        log.info("No need for idle supervisor agent, undeploy itself...");
+                                        Throwable error = undeploy(deploymentID(), DeploymentIdType.SUPERVISOR).blockingGet();
+
+                                        if (error != null) {
+                                            log.warn("Unable to undeploy not needed idle supervisor: ", error);
+                                        } else {
+                                            log.info("Idle supervisor undelployed successfully");
+                                            idleSupervisors.remove(name);
+                                        }
                                     }
                                 },
-                                error -> log.error("Unable to redeploy failed agent: " + agent.name(), error),
-                                () -> log.info("No need to redeploy new agent: {}", agent.name()));
+                                error -> {
+                                    log.error("Unable to redeploy failed agent: " + agent.name(), error);
+                                    release(lock);
+                                },
+                                () -> {
+                                    log.info("No need to redeploy new agent: {}", agent.name());
+                                    release(lock);
+                                });
             } else {
                 log.warn("Unable to obtain lock", locker.cause());
             }
@@ -362,6 +374,14 @@ public final class VertxSupervisorAgent extends AbstractVerticle {
 
     enum  DeploymentIdType {
         SUPERVISOR, AGENT
+    }
+
+    private void release(Lock lock) {
+        try {
+            lock.release();
+        } catch (Throwable e) {
+            log.warn("Lock was not released: {}", e.getMessage());
+        }
     }
 
     private void undeployAgent(ClusterManager clusterManager, VertxAgent toUnDeploy) {
@@ -386,7 +406,7 @@ public final class VertxSupervisorAgent extends AbstractVerticle {
                     undeploy(unDeploymentId, deploymentIdType)
                             .subscribeOn(Schedulers.io())
                             .observeOn(Schedulers.io())
-                            .doFinally(lock::release)
+                            .doFinally(() -> release(lock))
                             .subscribe(
                                     () -> log.info("Excessive agent undeployed successfully: {}", toUnDeploy),
                                     e -> log.warn("Error on excessive agent undeployment: ", e)

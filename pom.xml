@@ -35,10 +35,10 @@
 
     <properties>
         <java.version>1.8</java.version>
-        <reacto.version>2.1.0</reacto.version>
-        <jackson.version>2.9.7</jackson.version>
+        <reacto.version>2.1.2</reacto.version>
+        <jackson.version>2.9.8</jackson.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <vertx.version>3.5.4</vertx.version>
+        <vertx.version>3.6.2</vertx.version>
     </properties>
 
     <distributionManagement>
