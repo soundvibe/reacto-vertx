@@ -345,17 +345,22 @@ public final class VertxSupervisorAgent extends AbstractVerticle {
                         .subscribe(
                                 id -> {
                                     log.info("New agent was redeployed successfully: {}", agent.name());
-                                    if (deploymentId.get() == null) {
-                                        final String name = agent.name();
-                                        log.info("No need for idle supervisor agent, undeploy itself...");
-                                        Throwable error = undeploy(deploymentID(), DeploymentIdType.SUPERVISOR).blockingGet();
+                                    try {
+                                        if (deploymentId.get() == null) {
+                                            final String name = agent.name();
+                                            log.info("No need for idle supervisor agent, undeploy itself...");
+                                            Throwable error = undeploy(deploymentID(), DeploymentIdType.SUPERVISOR)
+                                                    .blockingGet(30L, TimeUnit.SECONDS);
 
-                                        if (error != null) {
-                                            log.warn("Unable to undeploy not needed idle supervisor: ", error);
-                                        } else {
-                                            log.info("Idle supervisor undelployed successfully");
-                                            idleSupervisors.remove(name);
+                                            if (error != null) {
+                                                log.warn("Unable to undeploy not needed idle supervisor: ", error);
+                                            } else {
+                                                log.info("Idle supervisor undelployed successfully");
+                                                idleSupervisors.remove(name);
+                                            }
                                         }
+                                    } finally {
+                                        release(lock);
                                     }
                                 },
                                 error -> {
