@@ -81,6 +81,11 @@ public final class VertxAgentSystem implements AgentSystem<VertxAgentFactory>, i
 
     @Override
     public Maybe<String> run(VertxAgentFactory agentFactory) {
+       return run(agentFactory, Duration.ofMinutes(1));
+    }
+
+
+    public Maybe<String> run(VertxAgentFactory agentFactory, Duration syncInterval) {
         return Maybe.create(emitter -> {
             final String uuid = UUID.randomUUID().toString();
             final VertxSupervisorAgent supervisorAgent = new VertxSupervisorAgent(this, agentFactory);
@@ -93,13 +98,17 @@ public final class VertxAgentSystem implements AgentSystem<VertxAgentFactory>, i
                         if (handler.succeeded()) {
                             log.info("Supervisor deployed for {}. ID: {}", uuid, handler.result());
                             deployedSupervisors.put(handler.result(), supervisorAgent);
-                            initSyncIfNeeded();
+                            initSyncIfNeeded(syncInterval);
                             emitter.onSuccess(handler.result());
                         } else if (handler.failed()) {
                             final Throwable cause = handler.cause();
                             if (cause instanceof AgentIsInDesiredClusterState) {
                                 log.warn("Agent is is desired cluster state, init sync if needed...");
-                                initSyncIfNeeded();
+                                initSyncIfNeeded(syncInterval);
+                                emitter.onComplete();
+                            } else if (cause instanceof AgentExceedsDesiredClusterState) {
+                                log.warn("Agent exceeds desired cluster state, init sync if needed...");
+                                initSyncIfNeeded(syncInterval);
                                 emitter.onComplete();
                             } else {
                                 log.error("Unable to deploy agent: " + uuid, cause);
@@ -153,12 +162,12 @@ public final class VertxAgentSystem implements AgentSystem<VertxAgentFactory>, i
         vertx.close(completionHandler);
     }
 
-    private synchronized void initSyncIfNeeded() {
+    private synchronized void initSyncIfNeeded(Duration syncInterval) {
         if (!clusterManager().isPresent()) return;
         final ClusterManager clusterManager = clusterManager().get();
         final Disposable disposable = syncRef.get();
         if (disposable == null || disposable.isDisposed()) {
-            final Disposable subscription = Flowable.interval(1, 1, TimeUnit.MINUTES, Schedulers.io())
+            final Disposable subscription = Flowable.interval(syncInterval.toMillis(), syncInterval.toMillis(), TimeUnit.MILLISECONDS, Schedulers.io())
                     .flatMapIterable(i -> deployedSupervisors())
                     .subscribe(
                             vertxSupervisorAgent -> {

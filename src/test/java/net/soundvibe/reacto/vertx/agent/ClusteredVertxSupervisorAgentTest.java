@@ -7,8 +7,10 @@ import io.vertx.core.spi.cluster.ClusterManager;
 import io.vertx.spi.cluster.hazelcast.HazelcastClusterManager;
 import org.junit.*;
 
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static io.vertx.core.logging.LoggerFactory.LOGGER_DELEGATE_FACTORY_CLASS_NAME;
 import static net.soundvibe.reacto.vertx.agent.VertxSupervisorAgent.findRunningAgents;
@@ -22,6 +24,8 @@ public class ClusteredVertxSupervisorAgentTest {
     private VertxAgentSystem agentSystem1;
     private VertxAgentSystem agentSystem2;
 
+    private Map<String, String> agents;
+
     static {
         System.setProperty(LOGGER_DELEGATE_FACTORY_CLASS_NAME, SLF4JLogDelegateFactory.class.getName());
     }
@@ -33,10 +37,13 @@ public class ClusteredVertxSupervisorAgentTest {
 
         clusterManager = agentSystem1.clusterManager()
                 .orElseThrow(RuntimeException::new);
+
+        agents = clusterManager.getSyncMap(VertxSupervisorAgent.MAP_NODES);
     }
 
     @After
     public void tearDown() throws InterruptedException {
+        agents.clear();
         if (agentSystem1 != null) {
             leaveCluster(agentSystem1);
             agentSystem1.close();
@@ -52,7 +59,6 @@ public class ClusteredVertxSupervisorAgentTest {
         agentSystem1.run(TestAgentVerticle::new).blockingGet();
         agentSystem2.run(TestAgentVerticle::new).blockingGet();
 
-        final Map<String, String> agents = clusterManager.getSyncMap(VertxSupervisorAgent.MAP_NODES);
         final List<VertxAgent> runningAgents = findRunningAgents(agents, TestAgentVerticle.class.getSimpleName(), 1);
         assertEquals("Should be both instances up",2, runningAgents.size());
 
@@ -65,8 +71,24 @@ public class ClusteredVertxSupervisorAgentTest {
     }
 
     @Test
+    public void shouldAutoScaleDynamically() throws InterruptedException {
+        final AtomicInteger instances = new AtomicInteger(1);
+        agentSystem1.run(() -> new AutoScalableAgent(instances), Duration.ofSeconds(3)).blockingGet();
+
+        assertEquals("Should be one instance up",
+                1, findRunningAgents(agents, AutoScalableAgent.class.getSimpleName(), 0).size());
+
+        instances.set(2);
+
+        //wait at least 3 seconds
+        Thread.sleep(4000);
+
+        assertEquals("Should be 2 instances up",
+                2, findRunningAgents(agents, AutoScalableAgent.class.getSimpleName(), 0).size());
+    }
+
+    @Test
     public void shouldUpdateToNewVersion() throws InterruptedException {
-        final Map<String, String> agents = clusterManager.getSyncMap(VertxSupervisorAgent.MAP_NODES);
         assertEquals("Should be 0 instances up", 0, findRunningAgents(agents, TestAgentVerticle.class.getSimpleName(), 1).size());
 
         agentSystem1.run(() -> new TestAgentVerticle(2, 2, 1)).blockingGet();
@@ -74,9 +96,9 @@ public class ClusteredVertxSupervisorAgentTest {
         final List<VertxAgent> runningAgents = findRunningAgents(agents, TestAgentVerticle.class.getSimpleName(), 1);
         assertEquals("Should be 1 instance up",1, runningAgents.size());
 
-        agentSystem2.run(() -> new TestAgentVerticle(1, 2, 1)).blockingGet();
+        agentSystem2.run(() -> new TestAgentVerticle(2, 2, 1)).blockingGet();
         final List<VertxAgent> runningAgents2 = findRunningAgents(agents, TestAgentVerticle.class.getSimpleName(), 1);
-        assertEquals("Should be 1 instance up because we already have deployed one instance",1, runningAgents2.size());
+        assertEquals("Should be 2 instances up",2, runningAgents2.size());
 
         agentSystem1.run(() -> new TestAgentVerticle(2, 2, 2)).blockingGet();
 
@@ -84,7 +106,7 @@ public class ClusteredVertxSupervisorAgentTest {
         final List<VertxAgent> runningAgentsNewVersion = findRunningAgents(agents, TestAgentVerticle.class.getSimpleName(), 2);
         assertEquals("Should be 1 new version instance after deployment",1, runningAgentsNewVersion.size());
         final List<VertxAgent> runningAgentsOldVersion = findRunningAgents(agents, TestAgentVerticle.class.getSimpleName(), 1);
-        assertEquals("Should be 1 old version instance running",1, runningAgentsOldVersion.size());
+        assertEquals("Should be 2 old versions running",2, runningAgents2.size());
     }
 
     private static VertxOptions vertxOptions() {
@@ -133,5 +155,25 @@ public class ClusteredVertxSupervisorAgentTest {
             return version;
         }
 
+    }
+
+    public static class AutoScalableAgent extends AgentVerticle<Long> {
+
+        public AutoScalableAgent(AtomicInteger instances) {
+            super(VertxAgentOptions.from(new DeploymentOptions())
+                    .setHA(true)
+                    .setMaxInstancesOnNode(3)
+                    .setClusterInstances(instances::get));
+        }
+
+        @Override
+        public Flowable<Long> run() {
+            return Flowable.interval(0, 1, TimeUnit.SECONDS);
+        }
+
+        @Override
+        public int version() {
+            return 0;
+        }
     }
 }
