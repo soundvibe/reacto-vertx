@@ -7,8 +7,10 @@ import io.vertx.core.spi.cluster.ClusterManager;
 import io.vertx.spi.cluster.hazelcast.HazelcastClusterManager;
 import org.junit.*;
 
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static io.vertx.core.logging.LoggerFactory.LOGGER_DELEGATE_FACTORY_CLASS_NAME;
 import static net.soundvibe.reacto.vertx.agent.VertxSupervisorAgent.findRunningAgents;
@@ -62,6 +64,25 @@ public class ClusteredVertxSupervisorAgentTest {
         Thread.sleep(2000);
         //wait for redeploy to happen
         assertEquals("Should be 2 instances after redeployment",2, runningAgents.size());
+    }
+
+    @Test
+    public void shouldAutoScaleDynamically() throws InterruptedException {
+        final AtomicInteger instances = new AtomicInteger(1);
+        agentSystem1.run(() -> new AutoScalableAgent(instances), Duration.ofSeconds(3)).blockingGet();
+
+        final Map<String, String> agents = clusterManager.getSyncMap(VertxSupervisorAgent.MAP_NODES);
+        assertEquals("Should be one instance up",
+                1, findRunningAgents(agents, AutoScalableAgent.class.getSimpleName(), 0).size());
+
+        instances.set(2);
+
+        //wait at least 3 seconds
+        Thread.sleep(4000);
+
+        assertEquals("Should be 2 instances up",
+                2, findRunningAgents(agents, AutoScalableAgent.class.getSimpleName(), 0).size());
+
     }
 
     @Test
@@ -133,5 +154,25 @@ public class ClusteredVertxSupervisorAgentTest {
             return version;
         }
 
+    }
+
+    public static class AutoScalableAgent extends AgentVerticle<Long> {
+
+        public AutoScalableAgent(AtomicInteger instances) {
+            super(VertxAgentOptions.from(new DeploymentOptions())
+                    .setHA(true)
+                    .setMaxInstancesOnNode(3)
+                    .setClusterInstances(instances::get));
+        }
+
+        @Override
+        public Flowable<Long> run() {
+            return Flowable.interval(0, 1, TimeUnit.SECONDS);
+        }
+
+        @Override
+        public int version() {
+            return 0;
+        }
     }
 }

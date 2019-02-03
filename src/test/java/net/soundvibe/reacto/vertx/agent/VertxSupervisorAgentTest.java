@@ -55,7 +55,8 @@ public class VertxSupervisorAgentTest {
             super("testAgent", VertxAgentOptions.from(new DeploymentOptions()
                     .setInstances(1)
                     .setHa(true))
-                    .setClusterInstances(4)
+                    .setClusterInstances(() -> 4)
+                    //.setClusterInstances(4)
                     .setAgentRestartStrategy(restartStrategy));
             this.countDownLatch = countDownLatch;
         }
